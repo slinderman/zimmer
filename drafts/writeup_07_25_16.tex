@@ -1,0 +1,141 @@
+\documentclass{article}
+
+\usepackage[numbers, compress]{natbib}
+
+\usepackage[utf8]{inputenc} % allow utf-8 input
+\usepackage[T1]{fontenc}    % use 8-bit T1 fonts
+\usepackage{hyperref}       % hyperlinks
+\usepackage{url}            % simple URL typesetting
+\usepackage{booktabs}       % professional-quality tables
+\usepackage{amsfonts}       % blackboard math symbols
+\usepackage{nicefrac}       % compact symbols for 1/2, etc.
+\usepackage{microtype}      % microtypography
+
+\usepackage{amsthm,amsmath,amssymb}
+\usepackage{macros}
+\usepackage{subcaption}
+\usepackage[textfont=small, labelfont=small]{caption}
+\usepackage{graphicx}
+\DeclareGraphicsExtensions{.pdf,.png,.jpg,.eps}
+
+\usepackage{algorithm}
+\usepackage{algorithmic}
+
+\usepackage[color=yellow]{todonotes}
+\usepackage{booktabs}
+\usepackage[inline]{enumitem}
+\usepackage{verbatim}
+
+\usepackage[margin=1in]{geometry}
+
+\usepackage{setspace}
+
+
+\title{Discrete and continuous latent states of neural activity in \textit{Caenorhabditis Elegans}}
+
+\author{Scott W. Linderman 
+  and
+  Liam Paninski \\
+  Columbia University
+}
+
+
+\begin{document}
+
+\singlespacing
+\maketitle
+
+\begin{abstract}
+  Recent advances in neural recording technologies have enabled
+  simultaneous measurements of the majority of head ganglia neurons in
+  immobilized C. elegans \cite{kato2015global}. Moreover, since some
+  neurons are known to reliably indicate the onset or offset of
+  particular behaviors, like ventral and dorsal turns, behavioral
+  state can be decoded from the simultaneous population recordings.
+  These datasets provide unique visibility into the relationship
+  between neural activity and behavior.  While it seems clear that
+  activity is inherently lower dimensional than the number of neurons
+  due to strong correlations between cells, the nature of the latent brain state
+  remains unclear. For example, is brain state better thought of as
+  discrete or continuous, or perhaps a combination of the two? Does it
+  obey linear or nonlinear dynamics?  We propose a generative approach
+  to probing these questions. We model the neural activity as a
+  \emph{switching linear dynamical system} (SLDS), with both discrete
+  and continuous latent states, and conditionally linear dynamics.  We
+  then analyze the posterior distribution over states implied by the
+  neural recordings and find that the discrete states correspond to
+  stereotypical motor sequences. In contrast to previous work, these
+  states are exposed in an entirely unsupervised manner.
+\end{abstract}
+
+% Body
+\onehalfspacing
+
+\section{Model}
+
+Assume the instantaneous neural activity at time~$t$ for a population
+of~$N$ neurons is represented as a vector,~$\by_t \in \reals^N$. In
+calcium imaging settings, the entries in this vector may be
+instaneous~$\Delta F/F$ measurements, or another signal that captures
+neural activity. In this experiment, we use the smoothed time
+derivative of~$\Delta F/F$. Over the course of an experiment, we
+measure a sequence of vectors, which we combine into a matrix denoted
+by~$\by_{1:T}$.
+
+Our model is based on the following assumptions: (i) the instantaneous
+neural activity,~$\by_t$, reflects an underlying, low-dimensional
+latent state; (ii) this state has a discrete component,~$z_t \in \{1, \ldots, K\}$,
+and a continuous component,~$\bx_t \in \reals^D$; (iii) the continuous
+latent state has linear dynamics governed by the corresponding discrete
+latent state; and (iv) the observed neural activity is a linear function
+of the underlying states with additive Gaussian noise.  
+
+\TODO{Discuss the motivation for these modeling assumptions.}
+
+These assumptions
+are combined in a switching linear dynamical system, which we formalize 
+with the following generative model:
+\begin{align}
+  p(\by_{1:T}, \bx_{1:T}, \bz_{1:T} \given \bTheta) &= 
+  \prod_{t=1}^T
+  p(z_t \given z_{t-1}, \bTheta) \, 
+  p(\bx_t \given z_{t-1}, \bx_{t-1}, \bTheta) \, 
+  p(\by_t \given z_t, \bx_t, \bTheta).
+\end{align}
+Our beliefs about the dynamics of these latent states are encoded in the 
+form of the conditional distributions for~$z_t$ and~$\bx_t$. First,
+we assume the discrete states follow a Markov process,
+\begin{align}
+  p(z_t \given z_{t-1}, \bTheta) &\sim \distDiscrete(\bpi^{(z_{t-1})}).
+\end{align}
+Next, we imbue the continuous latent states with linear Gaussian dynamics,
+\begin{align}
+  p(\bx_t \given \bx_{t-1}, z_{t-1}, \bTheta) 
+  &\sim \distNormal(\bA^{(z_{t-1})} \bx_{t-1} + \bb^{(z_{t-1})}, \bQ^{(z_{t-1})}).
+\end{align}
+Finally, we impose the assumption of linear observations via the conditional
+distribution,
+\begin{align}
+  p(\by_t \given \bx_{t}, z_{t}, \bTheta) 
+  &\sim \distNormal(\bC^{(z_{t})} \bx_{t} + \bd^{(z_{t})}, \bR^{(z_t)}).
+\end{align}
+Thus, the parameters of the model are,
+\begin{align}
+  \bTheta &= \left\{ \bA^{(k)}, \bb^{(k)}, \bQ^{(k)}, \bC^{(k)}, \bd^{(k)}, \bR^{(k)}, \bpi^{(k)} \right\}_{k=1}^K .
+\end{align}
+
+\TODO{Discuss interpretation of the parameters. Set the stage for visualizing~$\bA^{(k)}$ 
+in later sections.}
+
+\section{Inference}
+\TODO{Describe block Gibbs updates for~$\bz_{1:T} \given \bx_{1:T},
+  \by_{1:T}$ and~$\bx_{1:T} \given \bz_{1:T}, \by_{1:T}$.  Given the
+  latent states, the remaining parameters are sampled as in Bayesian
+  linear regression. }
+
+\section{Results}
+
+\bibliographystyle{unsrt}
+\bibliography{writeup}
+
+\end{document}
