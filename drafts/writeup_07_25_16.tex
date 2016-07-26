@@ -26,7 +26,7 @@
 \usepackage[inline]{enumitem}
 \usepackage{verbatim}
 
-\usepackage[margin=1in]{geometry}
+\usepackage[left=1.5in, right=1.5in, top=1.25in, bottom=1.25in]{geometry}
 
 \usepackage{setspace}
 
@@ -73,6 +73,23 @@
 
 \section{Model}
 
+\begin{figure}[t]
+\centering%
+\includegraphics[width=5.5in]{slds} 
+\caption{Simulated data from a switching linear dynamical system.
+The population stochastically jumps between discrete states,~$z_t \in \{a,b,c,d\}$,
+each of which is color coded for visualization.
+These discrete states govern the linear dynamics of the continuous latent 
+state,~$\bx_t \in \reals^D$ (here,~$D=2$). For example, state~$a$ corresponds to a simple
+random walk, whereas state~$d$ has fast, oscillatory dynamics. Finally,
+the observed signals,~$\by_t \in \reals^N$ (here,~$N=8$), are obtained via a linear 
+transformation of the underlying, continuous state,~$\bx_t$. The correlations
+and dynamics in the observations are inherited from the dynamics of the
+latent states.}
+\vspace{-0.5cm}
+\label{fig:slds_ex}
+\end{figure}
+
 Assume the instantaneous neural activity at time~$t$ for a population
 of~$N$ neurons is represented as a vector,~$\by_t \in \reals^N$. In
 calcium imaging settings, the entries in this vector may be
@@ -96,7 +113,9 @@ These assumptions
 are combined in a switching linear dynamical system, which we formalize 
 with the following generative model:
 \begin{align}
+  \label{eq:joint}
   p(\by_{1:T}, \bx_{1:T}, \bz_{1:T} \given \bTheta) &= 
+  p(\bTheta)
   \prod_{t=1}^T
   p(z_t \given z_{t-1}, \bTheta) \, 
   p(\bx_t \given z_{t-1}, \bx_{t-1}, \bTheta) \, 
@@ -113,6 +132,29 @@ Next, we imbue the continuous latent states with linear Gaussian dynamics,
   p(\bx_t \given \bx_{t-1}, z_{t-1}, \bTheta) 
   &\sim \distNormal(\bA^{(z_{t-1})} \bx_{t-1} + \bb^{(z_{t-1})}, \bQ^{(z_{t-1})}).
 \end{align}
+
+% Figure illustrating latent dynamics
+\begin{figure}[t]
+\centering%
+\begin{subfigure}{.49\textwidth}
+\includegraphics[width=\textwidth]{dynamics_1}
+\end{subfigure} 
+\begin{subfigure}{.49\textwidth}
+\includegraphics[width=\textwidth]{dynamics_4}
+\end{subfigure} 
+\caption{The dynamics corresponding to discrete latent state~$k$ may
+  be visualized as a vector field where the arrows point to the
+  expected next state,~$\bbE[\bx_{t+1}]=\bA^{(k)}\bx_t + \bb^{(k)}$.
+Here, we show the dynamics for the first and fourth discrete states 
+in the synthetic example from Figure~\ref{fig:slds_ex}. The first 
+discrete state is a random walk with a slight decay toward the origin;
+the fourth discrete state corresponds to fast, oscillatory dynamics.}
+\label{fig:slds_dynamics_ex}
+\vspace{-0.5cm}
+\end{figure}
+
+
+
 Finally, we impose the assumption of linear observations via the conditional
 distribution,
 \begin{align}
@@ -127,15 +169,119 @@ Thus, the parameters of the model are,
 \TODO{Discuss interpretation of the parameters. Set the stage for visualizing~$\bA^{(k)}$ 
 in later sections.}
 
-\section{Inference}
-\TODO{Describe block Gibbs updates for~$\bz_{1:T} \given \bx_{1:T},
-  \by_{1:T}$ and~$\bx_{1:T} \given \bz_{1:T}, \by_{1:T}$.  Given the
-  latent states, the remaining parameters are sampled as in Bayesian
-  linear regression. }
 
 \section{Results}
 
 \bibliographystyle{unsrt}
 \bibliography{writeup}
+
+\appendix
+
+\section{Bayesian Inference for Switching Linear Dynamical Systems}
+Our goal is to estimate the posterior probability of a sequence 
+of latent states and a set of parameters given the observed data.
+From Bayes' rule, we have,
+\begin{align}
+  p(\bz_{1:T}, \bx_{1:T}, \bTheta \given \by_{1:T}) 
+  &= 
+  \frac{p(\by_{1:T}, \bx_{1:T}, \bz_{1:T}, \bTheta)}{p(\by_{1:T})}.
+\end{align}
+The numerator is the joint probability given by Eq.~\eqref{eq:joint}, and
+the denominator,~$p(\by_{1:T})$, which is also known as the
+\emph{marginal likelihood}, is given by an integral over possible
+latent states and parameters,
+\begin{align}
+  p(\by_{1:T}) &= \int p(\by_{1:T}, \bx_{1:T}, \bz_{1:T}, \bTheta) 
+  \, \mathrm{d}\bx_{1:T} \, \mathrm{d}\bz_{1:T} \, \mathrm{d}\bTheta.
+\end{align}
+Unfortunately, this integral is not efficiently computable for complex
+models like the SLDS, forcing us to seek approximate inference methods
+instead. Markov chain Monte Carlo (MCMC) methods \todo{cite} offer one
+such approach. 
+
+To construct our MCMC algorithm, we iteratively sample one set of 
+latent states or parameters from its conditional distribution, holding 
+the rest fixed, in a technique known as Gibbs sampling \todo{cite}. 
+There are five main sets of parameters to sample, detailed below.
+\begin{enumerate}
+  \item \textit{Gibbs sampling the discrete latent states,~$\bz_{1:T}$:}
+    
+    Given the continuous latent states,~$\bx_{1:T}$, and the
+    parameters,~$\bTheta$, the conditional distribution over discrete
+    latent states is the same as in a standard hidden Markov model. A
+    joint sample from~$p(\bz_{1:T} \given \bx_{1:T}, \by_{1:T},
+    \bTheta)$ can be generated using the forward filtering backward
+    sampling (FFBS) algorithm.
+
+  \item \textit{Gibbs sampling the continuous latent states,~$\bx_{1:T}$:}
+    
+    Given the discrete latent states,~$\bz_{1:T}$, the observations,~$\by_{1:T}$,
+    and the parameters,~$\bTheta$, the conditional distribution of the 
+    continuous latent states is linear and Gaussian. As with the discrete
+    latent states, a joint sample of~$p(\bx_{1:T} \given \bz_{1:T}, \by_{1:T}, \bTheta)$
+    can be generated using an FFBS algorithm.
+
+  \item \textit{Gibbs sampling the dynamics parameters,~$\{\bA^{(k)}, \bb^{(k)}, \bQ^{(k)}\}_{k=1}^K$:}
+    
+    For fixed latent state sequences, the dynamics model reduces to a simple 
+    multivariate regression problem. We have,
+    \begin{multline}
+      p(\bA^{(k)}, \bb^{(k)}, \bQ^{(k)}  \given \bz_{1:T}, \bx_{1:T}, \by_{1:T}, \bTheta)
+      \\ 
+      \propto
+      p(\bA^{(k)}, \bb^{(k)}, \bQ^{(k)})
+      \prod_{t=1}^T \left[ \,
+        \distNormal(\bx_{t} \given \bA^{(k)} \bx_{t-1} + \bb^{(k)},\, \bQ^{(k)} \right]^{\bbI[z_{t-1}=k]}.
+    \end{multline}
+    If the prior distribution is the form of a matrix normal inverse Wishart (MNIW) prior, 
+    then this conditional distribution will be as well. 
+
+  \item \textit{Gibbs sampling the observation parameters,~$\{\bC^{(k)}, \bd^{(k)}, \bR^{(k)}\}_{k=1}^K$:}
+    
+    As with the dynamics parameters, 
+    for fixed latent state sequences, the observation model is also a 
+    multivariate regression problem. We have,
+    \begin{multline}
+      p(\bC^{(k)}, \bd^{(k)}, \bR^{(k)}  \given \bz_{1:T}, \bx_{1:T}, \by_{1:T}, \bTheta)
+      \\ 
+      \propto
+      p(\bC^{(k)}, \bd^{(k)}, \bR^{(k)})
+      \prod_{t=1}^T \left[ \,
+        \distNormal(\by_{t} \given \bC^{(k)} \bx_{t} + \bd^{(k)},\, \bR^{(k)} \right]^{\bbI[z_{t}=k]}.
+    \end{multline}
+    This, too, is conjugate when the prior distribution assumes the
+    form of a matrix normal inverse Wishart (MNIW) distribution.
+
+  \item \textit{Gibbs sampling the Markov parameters,~$\{\bpi^{(k)}\}_{k=1}^K$:}
+    
+    Finally, we must sample the Markov transition matrix. We separate
+    this into its~$K$ rows, each of which specifies a probability
+    distribution,~$p(z_t \given z_{t-1}=k) = \bpi^{(k)}$.  For a fixed
+    discrete latent state sequence, the conditional distribution of~$\bpi^{(k)}$ 
+    is,
+    \begin{align}
+      p(\bpi^{(k)} \given \bz_{1:T}) &\propto
+      p(\bpi^{(k)}) \prod_{t=1}^T \left[ \pi_{z_t}^{(k)} \right]^{\bbI[z_{t-1}=k]}.
+    \end{align}
+    If the prior distribution is~$p(\bpi^{(k)}) = \distDirichlet(\bpi^{(k)} \given \alpha)$, then this
+    conditional distribution is a Dirichlet as well,
+    \begin{align}
+      p(\bpi^{(k)} \given \bz_{1:T}) 
+      &= \distDirichlet(\bpi^{(k)} \given \widetilde{\balpha}^{(k)}) \\
+      \widetilde{\alpha}_{k'}^{(k)} &= \alpha + \sum_{t=1}^T \bbI[z_t = k'] \, \bbI[z_{t-1}=k].
+    \end{align}
+\end{enumerate} 
+
+Each one of these five steps leaves the desired posterior distribution as the 
+unique stationary distribution of the Markov chain. Thus, by iterating these 
+steps, the sampled states and parameters will eventually be distributed according
+to their posterior probability given the observed data. Critically, the rate 
+at which the Markov chain converges to its stationary distribution is determined
+in part by the correlation between the sampled latent states at one iteration and
+those at the next. If the chain only makes minor updates to the latent state sequence,
+it will likely take a long time to converge to the desired posterior distribution.  
+By performing joint, ``block'' updates of~$\bx_{1:T}$ and~$\bz_{1:T}$ in steps 
+1 and 2, we find that the latent state sequences are able to be explored more 
+efficiently.
 
 \end{document}
