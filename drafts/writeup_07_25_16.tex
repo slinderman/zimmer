@@ -76,16 +76,17 @@
 \begin{figure}[t]
 \centering%
 \includegraphics[width=5.5in]{slds} 
-\caption{Simulated data from a switching linear dynamical system.
-The population stochastically jumps between discrete states,~$z_t \in \{a,b,c,d\}$,
-each of which is color coded for visualization.
-These discrete states govern the linear dynamics of the continuous latent 
-state,~$\bx_t \in \reals^D$ (here,~$D=2$). For example, state~$a$ corresponds to a simple
-random walk, whereas state~$d$ has fast, oscillatory dynamics. Finally,
-the observed signals,~$\by_t \in \reals^N$ (here,~$N=8$), are obtained via a linear 
-transformation of the underlying, continuous state,~$\bx_t$. The correlations
-and dynamics in the observations are inherited from the dynamics of the
-latent states.}
+\caption{Simulated data from a switching linear dynamical system.  The
+  population stochastically switches between discrete states,~$z_t \in
+  \{1,\ldots,K\}$ (here,~$K=5$), each of which is color coded for
+  visualization.  These discrete states govern the linear dynamics of
+  the continuous latent state,~$\bx_t \in \reals^D$ (here,~$D=2$). For
+  example, state~$z_t=1$ corresponds to a simple random walk, whereas
+  state~$z_t=5$ has fast, oscillatory dynamics. Finally, the observed
+  signals,~$\by_t \in \reals^N$ (here,~$N=8$), are obtained via a
+  linear transformation of the underlying, continuous
+  state,~$\bx_t$. The correlations and dynamics in the observations
+  are inherited from the dynamics of the latent states.}
 \vspace{-0.5cm}
 \label{fig:slds_ex}
 \end{figure}
