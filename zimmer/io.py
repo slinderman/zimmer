@@ -28,21 +28,27 @@ class WormData(object):
     """
     Wrapper for basic worm dataset
     """
-    def __init__(self, worm_index=None, sample_rate=3.0):
-        filename = os.path.join(data_dir, "wbdata", worm_files[worm_index])
+    def __init__(self, index, name, sample_rate=3.0):
+        self.worm_name = name
+        self.worm_index = index
+
+
+        filename = os.path.join(data_dir, "wbdata", worm_files[index])
         zimmer_data = loadmat(filename)
 
         # Get the neuron names
         neuron_ids = zimmer_data["wbData"]['NeuronIds'][0, 0][0]
-        self.neuron_ids_1 = np.array(
-            map(lambda x: None if len(x[0]) == 0
+        self._neuron_ids_1 = np.array(
+            list(map(lambda x: None if len(x[0]) == 0
                                else str(x[0][0][0]),
-                neuron_ids))
+                neuron_ids)))
 
-        self.neuron_ids_2 = np.array(
-            map(lambda x: None if x.size < 2 or x[0, 1].size == 0
+        self._neuron_ids_2 = np.array(
+            list(map(lambda x: None if x.size < 2 or x[0, 1].size == 0
                                else str(x[0, 1][0]),
-                neuron_ids))
+                neuron_ids)))
+
+        self.neuron_names = self._get_neuron_names()
 
         # Get the calcium trace (corrected for bleaching)
         t_smpl = np.ravel(zimmer_data["wbData"]['tv'][0, 0])
@@ -64,7 +70,7 @@ class WormData(object):
         # Interpolate to get at new time points
         zimmer_state_labels = load_labels()
         zimmer_state_time_series = zimmer_state_labels["sevenStateColoring"]["dataset"][0, 0]['stateTimeSeries']
-        self.zimmer_states = interp_data(zimmer_state_time_series[0, worm_index].ravel() - 1, kind="nearest")
+        self.zimmer_states = interp_data(zimmer_state_time_series[0, index].ravel() - 1, kind="nearest")
         self.zimmer_states = np.clip(np.round(self.zimmer_states), 0, 7).astype(np.int)
         self.zimmer_cps = np.concatenate(([0],
                                           1 + np.where(np.diff(self.zimmer_states))[0],
@@ -73,54 +79,63 @@ class WormData(object):
         # expose number of neurons and number of time bins
         self.T, self.N = self.dff.shape
 
-    def find_neurons(self, neuron_names):
+    def _get_neuron_names(self):
+        # Remove the neurons that are not uniquely identified
+        def check_label(neuron_name):
+            if neuron_name is None:
+                return False
+            if neuron_name == "---":
+                return False
+
+            neuron_index = np.where(self._neuron_ids_1 == neuron_name)[0]
+            if len(neuron_index) != 1:
+                return False
+
+            if self._neuron_ids_2[neuron_index[0]] is not None:
+                return False
+
+            # Make sure it doesn't show up in the second neuron list
+            if len(np.where(self._neuron_ids_2 == neuron_name)[0]) > 0:
+                return False
+
+            return True
+
+        final_neuron_names = []
+        for i, neuron_name in enumerate(self._neuron_ids_1):
+            if check_label(neuron_name):
+                final_neuron_names.append(neuron_name)
+            else:
+                final_neuron_names.append("{}_neuron{}".format(self.worm_name, i))
+
+        return final_neuron_names
+
+    def find_neuron_indices(self, target_list):
         # Find their indices
         indices = []
-        for neuron_name in neuron_names:
-            neuron_index = np.where(self.neuron_ids_1 == neuron_name)[0]
-            indices.append(neuron_index[0])
-
-        # Find the indices of the neurons unique to each worm
-        other_indices = set(np.arange(self.N))
-        other_indices -= set(indices)
-
+        for target in target_list:
+            index = np.where(np.array(self.neuron_names) == target)[0]
+            if len(index) > 0:
+                indices.append(index[0])
+            else:
+                indices.append(None)
         return indices
 
 
-    # Find neurons that were identified in each worm
+# Find neurons that were identified in each worm
 def find_shared_neurons(worm_datas):
     from functools import reduce
 
-    all_first_neuron_ids = [wd.neuron_ids_1 for wd in worm_datas]
-    all_second_neuron_ids = [wd.neuron_ids_2 for wd in worm_datas]
+    all_first_neuron_ids = [[id if id is not None else "---"
+                             for id in wd._neuron_ids_1]
+                            for wd in worm_datas]
     shared_neurons = reduce(np.intersect1d, all_first_neuron_ids)
     print("Potentially shared neurons:\n {0}".format(shared_neurons))
-
-    # Remove the neurons that are not uniquely identified
-    def check_label(neuron_name, first_neuron_ids, second_neuron_ids):
-        if neuron_name is None:
-            return False
-        neuron_index = np.where(first_neuron_ids == neuron_name)[0]
-        if len(neuron_index) != 1:
-            return False
-
-        if second_neuron_ids[neuron_index[0]] is not None:
-            return False
-
-        # Make sure it doesn't show up in the second neuron list
-        if len(np.where(second_neuron_ids == neuron_name)[0]) > 0:
-            return False
-
-        return True
-
 
     truly_shared_neurons = []
     for neuron_name in shared_neurons:
         is_shared = True
-        for worm_index in range(5):
-            first_neuron_ids = all_first_neuron_ids[worm_index]
-            second_neuron_ids = all_second_neuron_ids[worm_index]
-            is_shared = is_shared and check_label(neuron_name, first_neuron_ids, second_neuron_ids)
+        for worm_data in worm_datas:
+            is_shared = is_shared and neuron_name in worm_data.neuron_names
         if is_shared:
             truly_shared_neurons.append(neuron_name)
 

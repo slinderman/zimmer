@@ -129,7 +129,7 @@ def plot_vector_field(ax, dds, zs, xs, sigma_xs, kk, inds=(0, 1), P=3, P_in=0,
     VV = VV.reshape((n_pts, n_pts))
 
     # Make the plot
-    XYZ = map(np.squeeze, [XX, YY, ZZ])
+    XYZ = list(map(np.squeeze, [XX, YY, ZZ]))
     C = np.ones((n_pts ** 2, 1)) * color[None, :]
 
     logistic = lambda x: 1. / (1 + np.exp(-x))
@@ -137,7 +137,7 @@ def plot_vector_field(ax, dds, zs, xs, sigma_xs, kk, inds=(0, 1), P=3, P_in=0,
     C[:, -1] = pr_to_alpha(pr)
 
     ax.quiver(XYZ[inds[0]], XYZ[inds[1]], UU, VV, color=C,
-              scale=1.0, scale_units="inches",
+              scale=1., scale_units="inches",
               headwidth=5.,
               )
 
@@ -148,6 +148,45 @@ def plot_vector_field(ax, dds, zs, xs, sigma_xs, kk, inds=(0, 1), P=3, P_in=0,
     ax.set_ylim(xmin, xmax)
 
     ax.set_title(title, fontsize=15)
+
+def plot_vector_field_3d(ii, z, x, perm_dynamics_distns, colors,
+                         ax=None, affine=False, lims=(-3,3),
+                         **kwargs):
+
+    qargs = dict(arrow_length_ratio=0.25,
+                 length=0.1,
+                 alpha=0.5)
+    qargs.update(kwargs)
+
+    D = x.shape[1]
+    ini = np.where(z == ii)[0]
+
+    # Look at the projected dynamics under each model
+    # Subsample accordingly
+    if ini.size > 500:
+        ini_inds = np.random.choice(ini.size, replace=False, size=500)
+        ini = ini[ini_inds]
+
+    Ai = perm_dynamics_distns[ii].A[:, :D]
+    bi = perm_dynamics_distns[ii].A[:, D] if affine else 0
+    dxdt = x.dot(Ai.T) + bi - x
+
+    # Create axis if not given
+    if ax is None:
+        fig = plt.figure(figsize=(5, 5))
+        ax = fig.add_subplot(111, projection='3d')
+
+    ax.quiver(x[ini, 0], x[ini, 1], x[ini, 2],
+              dxdt[ini, 0], dxdt[ini, 1], dxdt[ini, 2],
+              color=colors[ii],
+              **qargs)
+    ax.set_xlabel('$x_1$', fontsize=12, labelpad=10)
+    ax.set_ylabel('$x_2$', fontsize=12, labelpad=10)
+    ax.set_zlabel('$x_3$', fontsize=12, labelpad=10)
+    ax.set_xlim(lims)
+    ax.set_ylim(lims)
+    ax.set_zlim(lims)
+
 
 def plot_transition_matrix(P, colors, cmap,
                            results_dir=".", filename="trans_matrix.pdf"):
