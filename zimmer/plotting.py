@@ -11,6 +11,7 @@ import numpy as np
 from scipy.stats import multivariate_normal
 
 import matplotlib.pyplot as plt
+from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 from zimmer.util import states_to_changepoints
 
@@ -31,7 +32,7 @@ def plot_1d_continuous_states(x_inf, z_inf, z_zimmer, colors,
                  '-', lw=3,
                  color=colors[z_inf[cp_start]])
 
-    ax1.set_xticks([])
+    ax1.set_xticklabels([])
     ax1.set_yticks([])
     ax1.set_ylabel("$x_%d$" % (x_index + 1), fontsize=15)
     ax1.set_title("Inferred labels", fontsize=15)
@@ -48,7 +49,7 @@ def plot_1d_continuous_states(x_inf, z_inf, z_zimmer, colors,
     ax2.set_yticks([])
     ax2.set_xlabel("Frame", fontsize=15)
     ax2.set_ylabel("$x_%d$" % (x_index + 1), fontsize=15)
-    ax2.set_title("Kato et. al.", fontsize=15)
+    ax2.set_title("Zimmer labels", fontsize=15)
 
     ax1.set_xlim(plt_slice)
     ax2.set_xlim(plt_slice)
@@ -148,3 +149,62 @@ def plot_vector_field(ax, dds, zs, xs, sigma_xs, kk, inds=(0, 1), P=3, P_in=0,
 
     ax.set_title(title, fontsize=15)
 
+def plot_transition_matrix(P, colors, cmap,
+                           results_dir=".", filename="trans_matrix.pdf"):
+
+    K = P.shape[0]
+    # Look at the transition matrix
+    fig = plt.figure(figsize=(10, 5))
+    ax = fig.add_subplot(121)
+    im = ax.imshow(P, interpolation="nearest", cmap="Greys", vmin=0, vmax=1.0)
+    ax.set_xticks([])
+    ax.set_yticks([])
+    ax.set_xlabel("$z_{t+1}$", fontsize=15, labelpad=30)
+    ax.set_ylabel("$z_{t}$", fontsize=15, labelpad=30)
+    ax.set_title("Transition Matrix", fontsize=18)
+
+    divider = make_axes_locatable(ax)
+    lax = divider.append_axes("left", size="5%", pad=0.05)
+    lax.imshow(np.arange(K)[:, None], cmap=cmap, vmin=0, vmax=len(colors) - 1, aspect="auto",
+               interpolation="nearest")
+    lax.set_xticks([])
+    lax.set_yticks([])
+
+    bax = divider.append_axes("bottom", size="5%", pad=0.05)
+    bax.imshow(np.arange(K)[None, :], cmap=cmap, vmin=0, vmax=len(colors) - 1, aspect="auto",
+               interpolation="nearest")
+    bax.set_xticks([])
+    bax.set_yticks([])
+
+    cax = divider.append_axes("right", size="5%", pad=0.05)
+    plt.colorbar(im, cax=cax)
+
+    # View the off diagonal elements
+    Pod = P - np.diag(np.diag(P))
+    vmax = np.max(Pod)
+    ax = fig.add_subplot(122)
+    im = ax.imshow(Pod, interpolation="nearest", cmap="Greys", vmin=0, vmax=vmax)
+    ax.set_xticks([])
+    ax.set_yticks([])
+    ax.set_xlabel("$z_{t+1}$", fontsize=15, labelpad=30)
+    ax.set_ylabel("$z_{t}$", fontsize=15, labelpad=30)
+    ax.set_title("Off Diagonal Only", fontsize=18)
+
+    divider = make_axes_locatable(ax)
+    lax = divider.append_axes("left", size="5%", pad=0.05)
+    lax.imshow(np.arange(K)[:, None], cmap=cmap, vmin=0, vmax=len(colors) - 1, aspect="auto",
+               interpolation="nearest")
+    lax.set_xticks([])
+    lax.set_yticks([])
+
+    bax = divider.append_axes("bottom", size="5%", pad=0.05)
+    bax.imshow(np.arange(K)[None, :], cmap=cmap, vmin=0, vmax=len(colors) - 1, aspect="auto",
+               interpolation="nearest")
+    bax.set_xticks([])
+    bax.set_yticks([])
+
+    cax = divider.append_axes("right", size="5%", pad=0.05)
+    plt.colorbar(im, cax=cax)
+
+    plt.tight_layout()
+    plt.savefig(os.path.join(results_dir, filename))
