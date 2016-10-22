@@ -150,7 +150,7 @@ def plot_vector_field(ax, dds, zs, xs, sigma_xs, kk, inds=(0, 1), P=3, P_in=0,
     ax.set_title(title, fontsize=15)
 
 def plot_vector_field_3d(ii, z, x, perm_dynamics_distns, colors,
-                         ax=None, affine=False, lims=(-3,3),
+                         ax=None, affine=False, lims=(-3,3), N_plot=500,
                          **kwargs):
 
     qargs = dict(arrow_length_ratio=0.25,
@@ -163,8 +163,8 @@ def plot_vector_field_3d(ii, z, x, perm_dynamics_distns, colors,
 
     # Look at the projected dynamics under each model
     # Subsample accordingly
-    if ini.size > 500:
-        ini_inds = np.random.choice(ini.size, replace=False, size=500)
+    if ini.size > N_plot:
+        ini_inds = np.random.choice(ini.size, replace=False, size=N_plot)
         ini = ini[ini_inds]
 
     Ai = perm_dynamics_distns[ii].A[:, :D]
@@ -180,9 +180,9 @@ def plot_vector_field_3d(ii, z, x, perm_dynamics_distns, colors,
               dxdt[ini, 0], dxdt[ini, 1], dxdt[ini, 2],
               color=colors[ii],
               **qargs)
-    ax.set_xlabel('$x_1$', fontsize=12, labelpad=10)
-    ax.set_ylabel('$x_2$', fontsize=12, labelpad=10)
-    ax.set_zlabel('$x_3$', fontsize=12, labelpad=10)
+    # ax.set_xlabel('$x_1$', fontsize=12, labelpad=10)
+    # ax.set_ylabel('$x_2$', fontsize=12, labelpad=10)
+    # ax.set_zlabel('$x_3$', fontsize=12, labelpad=10)
     ax.set_xlim(lims)
     ax.set_ylim(lims)
     ax.set_zlim(lims)
