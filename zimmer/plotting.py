@@ -67,6 +67,41 @@ def plot_2d_continuous_states(ax, x, z, colors,
                 x[cp_start:cp_stop + 1, inds[1]],
                  '-', color=colors[z[cp_start]])
 
+def plot_3d_continuous_states(x, z, colors,
+                              ax=None,
+                              figsize=(2.5,2.5),
+                              inds=(0,1,2),
+                              title=None,
+                              results_dir=".", filename=None,
+                              **kwargs):
+
+    if ax is None:
+        fig = plt.figure(figsize=figsize)
+        ax = fig.add_subplot(111, projection="3d")
+
+    cps = states_to_changepoints(z)
+
+    # Color denotes our inferred latent discrete state
+    for cp_start, cp_stop in zip(cps[:-1], cps[1:]):
+        ax.plot(x[cp_start:cp_stop + 1, inds[0]],
+                x[cp_start:cp_stop + 1, inds[1]],
+                x[cp_start:cp_stop + 1, inds[2]],
+                '-', marker='.', markersize=3,
+                color=colors[z[cp_start]],
+                **kwargs)
+
+    ax.set_xlabel("$x_1$", labelpad=-10)
+    ax.set_ylabel("$x_2$", labelpad=-10)
+    ax.set_zlabel("$x_3$", labelpad=-10)
+    ax.set_xticklabels([])
+    ax.set_yticklabels([])
+    ax.set_zticklabels([])
+
+    if title is not None:
+        ax.set_title(title)
+
+    if filename is not None:
+        plt.savefig(os.path.join(results_dir, filename))
 
 def plot_vector_field(ax, dds, zs, xs, sigma_xs, kk, inds=(0, 1), P=3, P_in=0,
                       title="",
@@ -105,10 +140,13 @@ def plot_vector_field(ax, dds, zs, xs, sigma_xs, kk, inds=(0, 1), P=3, P_in=0,
 
     # Figure out where the dynamics take each point
     A = dds[kk].A[:, :P]
-    if P_in > 0:
-        b = dds[kk].A[:, P:]
-    else:
+    if P_in == 1:
+        b = dds[kk].A[:, P:].T
+    elif P_in == 0:
         b = 0
+    else:
+        raise Exception
+
     d_xyz = xyz.dot(A.T) + b - xyz
 
     pr = np.zeros(n_pts ** 2)
@@ -180,9 +218,12 @@ def plot_vector_field_3d(ii, z, x, perm_dynamics_distns, colors,
               dxdt[ini, 0], dxdt[ini, 1], dxdt[ini, 2],
               color=colors[ii],
               **qargs)
-    # ax.set_xlabel('$x_1$', fontsize=12, labelpad=10)
-    # ax.set_ylabel('$x_2$', fontsize=12, labelpad=10)
-    # ax.set_zlabel('$x_3$', fontsize=12, labelpad=10)
+    ax.set_xlabel('$x_1$', labelpad=-10)
+    ax.set_ylabel('$x_2$', labelpad=-10)
+    ax.set_zlabel('$x_3$', labelpad=-10)
+    ax.set_xticklabels([])
+    ax.set_yticklabels([])
+    ax.set_zticklabels([])
     ax.set_xlim(lims)
     ax.set_ylim(lims)
     ax.set_zlim(lims)

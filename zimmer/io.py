@@ -24,6 +24,12 @@ def load_labels():
             "sevenStateColoring.mat"))
     return zimmer_state_labels
 
+def load_key():
+    data = load_labels()
+    key = data["sevenStateColoring"]["key"][0,0][0]
+    key = [str(k)[2:-2] for k in key]
+    return key
+
 class WormData(object):
     """
     Wrapper for basic worm dataset
