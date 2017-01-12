@@ -23,7 +23,7 @@ class _MultiEmissionSLDS(_SLDSMixin):
         return data, s.stateseq
 
 
-class _MultiEmissionSLDSGibbsMixin(object):
+class _MultiEmissionSLDSGibbsMixin(_MultiEmissionSLDS):
     def resample_parameters(self):
         self.resample_lds_parameters()
         self.resample_hmm_parameters()
@@ -114,3 +114,71 @@ class MultiEmissionWeakLimitStickyHDPHMMSLDS(
         WeakLimitStickyHDPHMM):
     _states_class = MultiEmissionSLDSStatesEigen
 
+
+from zimmer.states import HierarchicalInputSLDSStates
+from rslds.rslds import InputHMMTransitions, InputHMM, \
+    InputOnlyHMMTransitions, StickyInputHMMTransitions, StickyInputOnlyHMMTransitions
+
+
+class HierarchicalInputSLDS(_MultiEmissionSLDSGibbsMixin, InputHMM):
+
+    _states_class = HierarchicalInputSLDSStates
+    _trans_class = InputHMMTransitions
+
+    def __init__(self, dynamics_distns, emission_distns, init_dynamics_distns,
+                 fixed_emission=False, **kwargs):
+
+        self.fixed_emission = fixed_emission
+
+        super(HierarchicalInputSLDS, self).__init__(
+            dynamics_distns, emission_distns, init_dynamics_distns,
+            D_in=dynamics_distns[0].D_out, **kwargs)
+
+    def resample_trans_distn(self):
+        # Include the auxiliary variables used for state resampling
+        self.trans_distn.resample(
+            stateseqs=[s.stateseq for s in self.states_list],
+            covseqs=[s.covariates for s in self.states_list],
+            omegas=[s.trans_omegas for s in self.states_list]
+        )
+        self._clear_caches()
+
+    def add_data(self, data, covariates=None, **kwargs):
+        self.states_list.append(
+                self._states_class(
+                    model=self, data=data,
+                    **kwargs))
+
+    def generate(self, T=100, keep=True, with_noise=True, **kwargs):
+        s = self._states_class(model=self, T=T, initialize_from_prior=True, **kwargs)
+        s.generate_states(with_noise=with_noise)
+        data = self._generate_obs(s, with_noise=with_noise)
+        if keep:
+            self.states_list.append(s)
+        return data, s.stateseq
+
+    def _generate_obs(self, s, with_noise=True):
+        if s.data is None:
+            s.data = s.generate_obs()
+        else:
+            # TODO: Handle missing data
+            raise NotImplementedError
+
+        return s.data, s.gaussian_states
+
+    def resample_emission_distns(self):
+        if self.fixed_emission:
+            return
+        super(HierarchicalInputSLDS, self).resample_emission_distns()
+
+
+class HierarchicalStickyInputSLDS(HierarchicalInputSLDS):
+    _trans_class = StickyInputHMMTransitions
+
+
+class HierarchicalInputOnlySLDS(HierarchicalInputSLDS):
+    _trans_class = InputOnlyHMMTransitions
+
+
+class HierarchicalStickyInputOnlySLDS(HierarchicalInputSLDS):
+    _trans_class = StickyInputOnlyHMMTransitions

@@ -4,12 +4,12 @@ import numpy as np
 from pybasicbayes.distributions import DiagonalRegression
 
 from pyhsmm.internals.hmm_states import HMMStatesPython, HMMStatesEigen
-from pyslds.states import _SLDSStatesGibbs
+from pyslds.states import _SLDSStatesMaskedData
 
 from pinkybrain.distributions import _PGLogisticRegressionBase
 
 
-class _MultiEmissionSLDSStates(_SLDSStatesGibbs):
+class _MultiEmissionSLDSStates(_SLDSStatesMaskedData):
     """
     Incorporating two separate Gaussian observation streams.
     We just have to combine the two observations and compute
@@ -49,40 +49,43 @@ class _MultiEmissionSLDSStates(_SLDSStatesGibbs):
         self.model = model
         self.fixed_stateseq = fixed_stateseq
 
-        if data is None:
-            assert isinstance(T, int)
-            self.T = T
-            self.data = data
-        else:
-            if isinstance(data, list):
-                self.data = data
-            elif isinstance(data, np.ndarray) and len(self.emission_distns) == 1:
-                self.data = [data]
-            else:
-                raise Exception("data must be a list, one array "
-                                "for each observation modality")
+        # if data is None:
+        #     assert isinstance(T, int)
+        #     self.T = T
+        #     self.data = data
+        # else:
+        #     if isinstance(data, list):
+        #         self.data = data
+        #     elif isinstance(data, np.ndarray) and len(self.emission_distns) == 1:
+        #         self.data = [data]
+        #     else:
+        #         raise Exception("data must be a list, one array "
+        #                         "for each observation modality")
+        #
+        #     Ts = np.array(list(map(lambda d: d.shape[0] if d is not None else 0, self.data)))
+        #     assert np.all((Ts == 0) | (np.isclose(Ts, np.max(Ts))))
+        #     self.T = np.max(Ts)
+        if data is not None:
+            if isinstance(data, np.ndarray) and len(self.emission_distns) == 1:
+                data = [data]
 
             Ts = np.array(list(map(lambda d: d.shape[0] if d is not None else 0, self.data)))
             assert np.all((Ts == 0) | (np.isclose(Ts, np.max(Ts))))
-            self.T = np.max(Ts)
+            T = np.max(Ts)
 
-        self.inputs = np.zeros((self.T, 0)) if inputs is None else inputs
+
+        inputs = np.zeros((T, 0)) if inputs is None else inputs
 
         # Check for masks
         if mask is None:
-            self.mask = [np.ones((self.T, ed.D_out), dtype=bool)
-                         for ed in self.emission_distns]
-        elif isinstance(mask, list):
-            self.mask = mask
-        elif isinstance(mask, np.ndarray) and len(self.emission_distns) == 1:
-            self.mask = [mask]
-        else:
-            raise Exception("mask must be a list, one array "
-                            "for each observation modality")
+            mask = [np.ones((T, ed.D_out), dtype=bool)
+                    for ed in model.emission_distns]
+        elif isinstance(mask, np.ndarray) and len(model.emission_distns) == 1:
+            mask = [mask]
 
         if data is not None:
-            assert isinstance(self.mask, list) and len(self.mask) == len(self.data)
-            for m,d in zip(self.mask, self.data):
+            assert isinstance(mask, list) and len(mask) == len(data)
+            for m,d in zip(mask, data):
                 if d is not None:
                     assert m.shape == d.shape
                     assert m.dtype == bool
@@ -90,6 +93,9 @@ class _MultiEmissionSLDSStates(_SLDSStatesGibbs):
         # Store the group -- important for hierarchical models
         assert group is None or isinstance(group, int)
         self.group = group
+
+        super(_MultiEmissionSLDSStates, self).__init__(
+            model, T=T, data=data, mask=mask, inputs=inputs)
 
         # TODO: Allow for given states
         self.generate_states()
@@ -205,45 +211,6 @@ class _MultiEmissionSLDSStates(_SLDSStatesGibbs):
         return self._aBl
 
 
-    # def _set_gaussian_expected_stats(self, smoothed_mus, smoothed_sigmas, E_xtp1_xtT):
-    #     if self.mask is None:
-    #         return super(_SLDSStatesMaskedData, self). \
-    #             _set_gaussian_expected_stats(smoothed_mus, smoothed_sigmas, E_xtp1_xtT)
-    #
-    #     assert not np.isnan(E_xtp1_xtT).any()
-    #     assert not np.isnan(smoothed_mus).any()
-    #     assert not np.isnan(smoothed_sigmas).any()
-    #
-    #     # Same as in parent class
-    #     # this is like LDSStates._set_expected_states but doesn't sum over time
-    #     T = self.T
-    #     ExxT = self.ExxT = smoothed_sigmas \
-    #                        + self.smoothed_mus[:, :, None] * self.smoothed_mus[:, None, :]
-    #
-    #     # Initial state stats
-    #     self.E_init_stats = (self.smoothed_mus[0], ExxT[0], 1.)
-    #
-    #     # Dynamics stats
-    #     # TODO avoid memory instantiation by adding to Regression (2TD vs TD^2)
-    #     # TODO only compute EyyT once
-    #     E_xtp1_xtp1T = self.E_xtp1_xtp1T = ExxT[1:]
-    #     E_xt_xtT = self.E_xt_xtT = ExxT[:-1]
-    #
-    #     self.E_dynamics_stats = \
-    #         (E_xtp1_xtp1T, E_xtp1_xtT, E_xt_xtT, np.ones(T - 1))
-    #
-    #     # Emission stats
-    #     masked_data = self.data * self.mask if self.mask is not None else self.data
-    #     if self.diagonal_noise:
-    #         Eysq = self.EyyT = masked_data ** 2
-    #         EyxT = self.EyxT = masked_data[:, :, None] * self.smoothed_mus[:, None, :]
-    #         ExxT = self.mask[:, :, None, None] * ExxT[:, None, :, :]
-    #         self.E_emission_stats = (Eysq, EyxT, ExxT, self.mask)
-    #     else:
-    #         raise Exception("Only DiagonalRegression currently supports missing data")
-    #
-    #     self._mf_aBl = None  # TODO
-
     def smooth(self):
         self.info_E_step()
         # TODO: Handle inputs
@@ -260,3 +227,6 @@ class MultiEmissionSLDSStatesEigen(
     _MultiEmissionSLDSStates,
     HMMStatesEigen):
     pass
+
+
+class HierarchicalInputSLDSStates
