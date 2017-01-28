@@ -1,184 +1,87 @@
 # Build specific models for joint observations
 import numpy as np
 
-from pybasicbayes.distributions import DiagonalRegression
-
-from pyhsmm.internals.hmm_states import HMMStatesPython, HMMStatesEigen
-from pyslds.states import _SLDSStatesMaskedData
-
-from pinkybrain.distributions import _PGLogisticRegressionBase
+from pyslds.states import _SLDSStatesMaskedData, _SLDSStatesGibbs, HMMStatesEigen
 
 
-class _MultiEmissionSLDSStates(_SLDSStatesMaskedData):
+class HierarchicalSLDSStates(_SLDSStatesMaskedData,
+                             _SLDSStatesGibbs,
+                             HMMStatesEigen):
     """
-    Incorporating two separate Gaussian observation streams.
-    We just have to combine the two observations and compute
-    the effective information form potential to give to the
-    latent state sampler.
+    Let's try a new approach in which hierarchical states just have a tag
+    to indicate which group they come from.  The data will always be a big
+    matrix with all possible observation dimensions.  Some (most) of the
+    observations will be masked off though.
 
-    As long as both the observations are linear and Gaussian,
-    this should just be a matter of adding potentials.
+    All the smarts will go into the emission distribution.
 
-    The major concern is: how do we weight the likelihoods so
-    that the two streams are treated as equally important? If
-    the behavioral video stream is 2000 pixels and the neural
-    signal is 2 dimensional, then unless the precision is 1000
-    times larger for the neural signal, the model is only
-    incentivized to capture the behavioral video.
+    This approach will support all Gaussian or all count observations, but
+    not a mix.
 
-    NOTES:
-
-        1. We assume the model emission_distns list is a set
-           of distributions for each observation modality.
-           These are shared by all discrete latent states.
-
-        2. We need to handle missing data here too. Does each
-           modality have its own mask?
-
-        3. We can either take in the data as a hstack'ed array
-           or as a list of arrays. I'm partial to the latter
-           since it is more transparent; however, it also
-           breaks with the pySLDS convention.
 
     """
 
-    def __init__(self, model, data=None, T=None, inputs=None, mask=None, group=None, fixed_stateseq=None, **kwargs):
-        # TODO: Fix up this initialization code.
-        # TODO: It is way too complicated.
-
-        self.model = model
-        self.fixed_stateseq = fixed_stateseq
-
-        # if data is None:
-        #     assert isinstance(T, int)
-        #     self.T = T
-        #     self.data = data
-        # else:
-        #     if isinstance(data, list):
-        #         self.data = data
-        #     elif isinstance(data, np.ndarray) and len(self.emission_distns) == 1:
-        #         self.data = [data]
-        #     else:
-        #         raise Exception("data must be a list, one array "
-        #                         "for each observation modality")
-        #
-        #     Ts = np.array(list(map(lambda d: d.shape[0] if d is not None else 0, self.data)))
-        #     assert np.all((Ts == 0) | (np.isclose(Ts, np.max(Ts))))
-        #     self.T = np.max(Ts)
-        if data is not None:
-            if isinstance(data, np.ndarray) and len(self.emission_distns) == 1:
-                data = [data]
-
-            Ts = np.array(list(map(lambda d: d.shape[0] if d is not None else 0, self.data)))
-            assert np.all((Ts == 0) | (np.isclose(Ts, np.max(Ts))))
-            T = np.max(Ts)
-
-
-        inputs = np.zeros((T, 0)) if inputs is None else inputs
-
-        # Check for masks
-        if mask is None:
-            mask = [np.ones((T, ed.D_out), dtype=bool)
-                    for ed in model.emission_distns]
-        elif isinstance(mask, np.ndarray) and len(model.emission_distns) == 1:
-            mask = [mask]
-
-        if data is not None:
-            assert isinstance(mask, list) and len(mask) == len(data)
-            for m,d in zip(mask, data):
-                if d is not None:
-                    assert m.shape == d.shape
-                    assert m.dtype == bool
-
-        # Store the group -- important for hierarchical models
-        assert group is None or isinstance(group, int)
+    def __init__(self, model, group=None, **kwargs):
         self.group = group
-
-        super(_MultiEmissionSLDSStates, self).__init__(
-            model, T=T, data=data, mask=mask, inputs=inputs)
-
-        # TODO: Allow for given states
-        self.generate_states()
+        super(HierarchicalSLDSStates, self).__init__(model, **kwargs)
 
     @property
-    def diagonal_noise(self):
-        return True
+    def _info_emission_params_diag(self):
+        if self.model._single_emission:
 
-    @property
-    def N_output(self):
-        return len(self.emission_distns)
-
-    @property
-    def Cs(self):
-        raise Exception("Dual observation model does not have Cs")
-
-    @property
-    def DDTs(self):
-        raise Exception("Dual observation model does not have DDTs")
-
-    def generate_obs(self, with_noise=True):
-        # Go through each time bin, get the discrete latent state,
-        # use that to index into the emission_distns to get samples
-        T= self.T
-        dss, gss = self.stateseq, self.gaussian_states
-
-        datas = [np.empty((T, ed.D_out)) for ed in self.emission_distns]
-        for data, ed in zip(datas, self.emission_distns):
-            for t in range(self.T):
-                if with_noise:
-                    data[t] = \
-                        ed.rvs(x=np.hstack((gss[t][None, :], self.inputs[t][None,:])),
-                               return_xy=False)
-                else:
-                    data[t] = \
-                        ed.predict(np.hstack((gss[t][None,:], self.inputs[t][None,:])))
-        return datas
-
-
-    @property
-    def info_emission_params(self):
-        """
-        Override the base class's emission params property.
-        Here, we sum the potentials from each one of the observations.
-        """
-        J_node = np.zeros((self.T, self.D_latent**2))
-        h_node = np.zeros((self.T, self.D_latent))
-        for ed, d, m in zip(self.emission_distns, self.data, self.mask):
-            if d is None:
-                continue
-            # Compute potential and add it
-            J, h = self._compute_emission_params(ed, d, m)
-            J_node += J
-            h_node += h
-
-        J_node = J_node.reshape((self.T, self.D_latent, self.D_latent))
-        return J_node, h_node, 0
-
-    def _compute_emission_params(self, emission_distn, data, mask):
-        # TODO: Include inputs!
-        if isinstance(emission_distn, DiagonalRegression):
-            if self.group is not None:
-                sigmasq = emission_distn.sigmasq_flat[self.group]
-                C = emission_distn.A[self.group][:,:self.D_latent]
-                D = emission_distn.A[self.group][:,self.D_latent:]
-            else:
-                sigmasq = emission_distn.sigmasq_flat
-                C = emission_distn.A[:,:self.D_latent]
-                D = emission_distn.A[:,self.D_latent:]
-
-            J_obs = mask / sigmasq
+            C = self.emission_distns[0].A[self.group, :, :self.D_latent]
+            D = self.emission_distns[0].A[self.group, :, self.D_latent:]
             CCT = np.array([np.outer(cp, cp) for cp in C]). \
-                reshape((emission_distn.D_out, self.D_latent ** 2))
+                reshape((self.D_emission, self.D_latent ** 2))
+
+            sigmasq = self.emission_distns[0].sigmasq_flat[self.group]
+            J_obs = self.mask / sigmasq
+            centered_data = self.data - self.inputs.dot(D.T)
 
             J_node = np.dot(J_obs, CCT)
-            h_node = (data * J_obs).dot(C)
-            if self.D_input > 0:
-                h_node -= (self.inputs.dot(D.T) * J_obs).dot(C)
+
+            # h_node = y^T R^{-1} C - u^T D^T R^{-1} C
+            h_node = (centered_data * J_obs).dot(C)
+
+            log_Z_node = -self.mask.sum(1) / 2. * np.log(2 * np.pi)
+            log_Z_node -= 1. / 2 * np.sum(self.mask * np.log(sigmasq), axis=1)
+            log_Z_node -= 1. / 2 * np.sum(centered_data ** 2 * J_obs, axis=1)
+
 
         else:
-            raise Exception("Emission distribution class %s is not supported"
-                            % emission_distn.__class__)
-        return J_node, h_node
+            expand = lambda a: a[None, ...]
+            stack_set = lambda x: np.concatenate(list(map(expand, x)))
+
+            sigmasq_set = [d.sigmasq_flat[self.group] for d in self.emission_distns]
+            sigmasq = stack_set(sigmasq_set)[self.stateseq]
+            J_obs = self.mask / sigmasq
+
+            C_set = [d.A[self.group, :, :self.D_latent] for d in self.emission_distns]
+            D_set = [d.A[self.group, :, self.D_latent:] for d in self.emission_distns]
+            CCT_set = [np.array([np.outer(cp, cp) for cp in C]).
+                           reshape((self.D_emission, self.D_latent ** 2))
+                       for C in C_set]
+
+            J_node = np.zeros((self.T, self.D_latent ** 2))
+            h_node = np.zeros((self.T, self.D_latent))
+            log_Z_node = -self.mask.sum(1) / 2. * np.log(2 * np.pi) * np.ones(self.T)
+
+            for i in range(len(self.emission_distns)):
+                ti = np.where(self.stateseq == i)[0]
+                centered_data_i = self.data[ti] - self.inputs[ti].dot(D_set[i].T)
+
+                J_node[ti] = np.dot(J_obs[ti], CCT_set[i])
+                h_node[ti] = (centered_data_i * J_obs[ti]).dot(C_set[i])
+
+                log_Z_node[ti] -= 1. / 2 * np.sum(np.log(sigmasq_set[i]))
+                log_Z_node[ti] -= 1. / 2 * np.sum(centered_data_i ** 2 * J_obs[ti], axis=1)
+
+        J_node = J_node.reshape((self.T, self.D_latent, self.D_latent))
+        return J_node, h_node, log_Z_node
+
+    @property
+    def _info_emission_params_dense(self):
+        raise NotImplementedError
 
     @property
     def aBl(self):
@@ -187,46 +90,35 @@ class _MultiEmissionSLDSStates(_SLDSStatesMaskedData):
             ids, dds, eds = self.init_dynamics_distns, self.dynamics_distns, \
                             self.emission_distns
 
-            # Dynamics distributions
             for idx, (d1, d2) in enumerate(zip(ids, dds)):
+                # Initial state distribution
                 aBl[0, idx] = d1.log_likelihood(self.gaussian_states[0])
 
+                # Dynamics
                 xs = np.hstack((self.gaussian_states[:-1], self.inputs[:-1]))
-                aBl[:-1, idx] += d2.log_likelihood((xs, self.gaussian_states[1:]))
+                aBl[:-1, idx] = d2.log_likelihood((xs, self.gaussian_states[1:]))
 
-            # Emission distributions
+            # Emissions
             xs = np.hstack((self.gaussian_states, self.inputs))
-            for ed, d, m in zip(self.emission_distns, self.data, self.mask):
-                if d is None:
-                    continue
-
-                # TODO: Fix up this hackery
-                if self.group is not None:
-                    aBl += ed.log_likelihood((xs, d), group=self.group, mask=m)[:, None]
+            if self.model._single_emission:
+                d3 = self.emission_distns[0]
+                if self.mask is None:
+                    aBl += d3.log_likelihood((xs, self.data), group=self.group)[:,None]
                 else:
-                    aBl += ed.log_likelihood((xs, d), mask=m)[:, None]
+                    aBl += d3.log_likelihood((xs, self.data), mask=self.mask, group=self.group)[:,None]
+            else:
+                for idx, d3 in enumerate(eds):
+                    if self.mask is None:
+                        aBl[:,idx] += d3.log_likelihood((xs, self.data), group=self.group)
+                    else:
+                        aBl[:,idx] += d3.log_likelihood((xs, self.data), mask=self.mask, group=self.group)
 
             aBl[np.isnan(aBl).any(1)] = 0.
 
         return self._aBl
 
-
-    def smooth(self):
-        self.info_E_step()
-        # TODO: Handle inputs
-        return [self.smoothed_mus.dot(ed.A.T) for ed in self.emission_distns]
-
-
-class MultiEmissionSLDSStatesPython(
-    _MultiEmissionSLDSStates,
-    HMMStatesPython):
+from rslds.rslds import RecurrentSLDSStates
+class HierarchicalRecurrentSLDSStates(HierarchicalSLDSStates, RecurrentSLDSStates):
     pass
 
 
-class MultiEmissionSLDSStatesEigen(
-    _MultiEmissionSLDSStates,
-    HMMStatesEigen):
-    pass
-
-
-class HierarchicalInputSLDSStates

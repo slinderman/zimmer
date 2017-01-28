@@ -57,11 +57,8 @@ importlib.reload(zimmer.states)
 
 import zimmer.models
 importlib.reload(zimmer.models)
-from zimmer.models import MultiEmissionWeakLimitStickyHDPHMMSLDS
+from zimmer.models import HierarchicalWeakLimitStickyHDPHMMSLDS
 
-import zimmer.emissions
-importlib.reload(zimmer.emissions)
-from zimmer.emissions import HierarchicalDiagonalRegression
 from zimmer.emissions import HierarchicalDiagonalRegressionFixedScale
 from zimmer.emissions import HierarchicalDiagonalRegressionTruncatedScale
 
@@ -73,8 +70,8 @@ from zimmer.plotting import plot_1d_continuous_states, plot_3d_continuous_states
 from zimmer.util import states_to_changepoints
 
 # IO
-run_num = 5
-results_dir = os.path.join("results", "11_30_16", "run{:03d}".format(run_num))
+run_num = 1
+results_dir = os.path.join("results", "01_27_17", "run{:03d}".format(run_num))
 assert os.path.exists(results_dir)
 
 # Hyperparameters
@@ -142,17 +139,22 @@ def load_data():
 
     # Construct a big dataset with all neurons for each worm
     datasets = []
+    masks = []
     for wd in worm_datas:
-        this_dataset = []
+        this_dataset = np.zeros((wd.T, N_neurons))
+        this_mask = np.zeros((wd.T, N_neurons), dtype=bool)
         indices = wd.find_neuron_indices(all_neuron_names)
-        for index in indices:
-            if index is None:
-                this_dataset.append(None)
-            else:
-                this_dataset.append(wd.dff_deriv[:, index][:, None])
-        datasets.append(this_dataset)
+        for n, index in enumerate(indices):
+            if index is not None:
+                this_dataset[:,n] = wd.dff_deriv[:, index]
+                this_mask[:,n] = True
 
-    return perm_z_true, perm_z_key, N_neurons, Ts, all_neuron_names, datasets, Ys, Ys_shared, shared_neurons
+        datasets.append(this_dataset)
+        masks.append(this_mask)
+
+    return perm_z_true, perm_z_key, N_neurons, Ts, all_neuron_names, \
+           datasets, masks, \
+           Ys, Ys_shared, shared_neurons
 
 
 ### Fitting
@@ -166,7 +168,7 @@ def fit_pca(Ys_shared):
     C_init = pca.components_.T
     return x_inits, C_init
 
-def make_hslds(N_neurons, datasets, Ts, z_inits=None, x_inits=None, fixed_scale=True):
+def make_hslds(N_neurons, datasets, masks, Ts, z_inits=None, x_inits=None, fixed_scale=True):
     dynamics_hypparams = \
         dict(nu_0=D_latent + D_in + 2,
              S_0=np.eye(D_latent),
@@ -188,22 +190,21 @@ def make_hslds(N_neurons, datasets, Ts, z_inits=None, x_inits=None, fixed_scale=
     # One emission distribution per "neuron," where some neurons
     # are observed in one worm but not another.
     if fixed_scale:
-        emission_distns = [
-            HierarchicalDiagonalRegressionFixedScale(1, D_latent + D_in, N_worms)
-            for n in range(N_neurons)
-            ]
+        emission_distns = \
+            HierarchicalDiagonalRegressionFixedScale(
+                N_neurons, D_latent + D_in, N_worms)
     else:
-        emission_distns = [
-            HierarchicalDiagonalRegressionTruncatedScale(1, D_latent + D_in, N_worms, smin=0.75, smax=1.25)
-            for n in range(N_neurons)
-            ]
+        emission_distns = \
+            HierarchicalDiagonalRegressionTruncatedScale(
+                N_neurons, D_latent + D_in, N_worms, smin=0.75, smax=1.25)
+
 
 
     init_dynamics_distns = [
         Gaussian(nu_0=D_latent + 2, sigma_0=3. * np.eye(D_latent), mu_0=np.zeros(D_latent), kappa_0=0.01)
         for _ in range(Nmax)]
 
-    model = MultiEmissionWeakLimitStickyHDPHMMSLDS(
+    model = HierarchicalWeakLimitStickyHDPHMMSLDS(
         init_dynamics_distns=init_dynamics_distns,
         dynamics_distns=dynamics_distns,
         emission_distns=emission_distns,
@@ -213,10 +214,10 @@ def make_hslds(N_neurons, datasets, Ts, z_inits=None, x_inits=None, fixed_scale=
         init_state_distn='uniform')
 
     # Add the data
-    for worm, dataset in enumerate(datasets):
+    for worm, (dataset, mask) in enumerate(zip(datasets, masks)):
         T = Ts[worm]
         inputs = np.ones((T, D_in))
-        model.add_data(data=dataset, group=worm, inputs=inputs)
+        model.add_data(data=dataset, mask=mask, group=worm, inputs=inputs)
 
         # Initialize continuous latent states
         if x_inits is not None:
@@ -811,7 +812,7 @@ def plot_neural_embedding(hslds, all_neuron_names, N_to_plot=60, worm=1):
 if __name__ == "__main__":
     # Load the data
     z_trues, z_key, N_neurons, Ts, \
-    all_neuron_names, datasets, \
+    all_neuron_names, datasets, masks, \
     Ys, Ys_shared, shared_neurons = \
         load_data()
 
@@ -828,10 +829,10 @@ if __name__ == "__main__":
     # hslds = make_hslds(N_neurons, datasets, Ts, x_inits=x_inits)
     # hslds, lls, z_smpls, dynamics_distns, z_finals, x_finals, sigma_x_finals = fit_hslds(hslds)
 
-    hslds = make_hslds(N_neurons, datasets, Ts, x_inits=x_inits, fixed_scale=False)
+    hslds = make_hslds(N_neurons, datasets, masks, Ts, x_inits=x_inits, fixed_scale=False)
     hslds, lls, z_smpls, dynamics_distns, z_finals, x_finals, sigma_x_finals = fit_hslds(hslds)
 
-    # plot_discrete_state_samples(perm_z_smpls[1], z_trues[1])
+    # plot_discrete_state_samples(z_smpls[1], z_trues[1])
     # plot_changepoint_prs(z_smpls[1], z_trues[1], title="Worm 2 Discrete States")
 
     # for worm in range(N_worms):
@@ -847,8 +848,8 @@ if __name__ == "__main__":
     # plot_3d_dynamics(dynamics_distns, np.concatenate(z_finals), np.vstack(x_finals))
 
     # Make 3D animations of worm dynamics
-    # for w in range(N_worms):
-    #     make_dynamics_3d_movie(w, z_finals, x_finals, dynamics_distns)
+    for w in range(N_worms):
+        make_dynamics_3d_movie(w, z_finals, x_finals, dynamics_distns)
 
 
     # neurons_to_plot = ["AVAL", "AVAR", "AVBL", "AVER", "RIML", "RIMR"]

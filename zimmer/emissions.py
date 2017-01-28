@@ -4,7 +4,6 @@ More sophisticated emission models than just simple regressions.
 import numpy as np
 
 from pybasicbayes.distributions import DiagonalRegression
-from pybasicbayes.util.general import objarray
 from pybasicbayes.util.stats import sample_gaussian, sample_invgamma
 
 class HierarchicalDiagonalRegression(DiagonalRegression):
@@ -42,7 +41,7 @@ class HierarchicalDiagonalRegression(DiagonalRegression):
         self.beta_0 = beta_0
 
         self.niter = niter
-        self.resample(data=[], groups=[])  # initialize from prior
+        self.resample(data=[], groups=[], mask=[])  # initialize from prior
 
     @property
     def A(self):
@@ -74,6 +73,51 @@ class HierarchicalDiagonalRegression(DiagonalRegression):
 
         return ll
 
+    def _get_scale_statistics(self, data, mask=None):
+        D_out = self.D_out
+
+        if data is None:
+            return (np.zeros((D_out,)),
+                    np.zeros((D_out,)),
+                    np.zeros((D_out,)),
+                    np.zeros((D_out,)))
+
+        # Make sure data is a list
+        if not isinstance(data, list):
+            datas = [data]
+        else:
+            datas = data
+
+        # Make sure mask is also a list if given
+        if mask is not None:
+            if not isinstance(mask, list):
+                masks = [mask]
+            else:
+                masks = mask
+        else:
+            masks = [None] * len(datas)
+
+        # Sum sufficient statistics from each dataset
+        ysq = np.zeros(D_out)
+        yxT = np.zeros(D_out)
+        xxT = np.zeros(D_out)
+        n = np.zeros(D_out)
+
+        for data, mask in zip(datas, masks):
+            x, y = data
+            assert x.shape[1] == D_out
+            assert y.shape[1] == D_out
+
+            if mask is None:
+                mask = np.ones_like(y, dtype=bool)
+
+            ysq += np.sum(y**2 * mask, axis=0)
+            yxT += np.sum(y * x * mask, axis=0)
+            xxT += np.sum(x**2 * mask, axis=0)
+            n += np.sum(mask, axis=0)
+
+        return ysq, yxT, xxT, n
+
 
     def resample(self, data, groups=None, stats=None, mask=None, niter=None):
         """
@@ -81,11 +125,11 @@ class HierarchicalDiagonalRegression(DiagonalRegression):
         groups is a list of thelength specifying which group the
         corresponding dataset get
         """
-        if groups is None:
-            raise NotImplementedError
+        assert groups is not None, "HierarchicalRegression requires each data to have a group"
+        assert isinstance(data, list), "HierarchicalRegression requires a list of data matrices"
 
-        if mask is not None:
-            raise NotImplementedError
+        if mask is None:
+            mask = [None] * len(data)
 
         niter = niter if niter else self.niter
         for itr in range(niter):
@@ -93,8 +137,12 @@ class HierarchicalDiagonalRegression(DiagonalRegression):
             # Resample A using shared statistics
             all_group_stats = []
             for group in range(self.N_groups):
-                group_data = [d for d,g in zip(data, groups) if g == group ]
-                all_group_stats.append(self._get_statistics(group_data, D_out=self.D_out, D_in=self.D_in))
+                group_data = [d for d,g in zip(data, groups) if g == group]
+                group_mask = [m for m,g in zip(mask, groups) if g == group]
+                all_group_stats.append(self._get_statistics(group_data,
+                                                            mask=group_mask,
+                                                            D_out=self.D_out,
+                                                            D_in=self.D_in))
 
             # Resample the shared emission matrix
             self._resample_A(all_group_stats)
@@ -108,7 +156,10 @@ class HierarchicalDiagonalRegression(DiagonalRegression):
             for group in range(self.N_groups):
                 group_data = [d for d, g in zip(data, groups) if g == group]
                 group_data = [(x.dot(self._A.T), y) for (x,y) in group_data]
-                this_group_stats = self._get_statistics(group_data, D_out=self.D_out, D_in=1)
+                group_mask = [m for m, g in zip(mask, groups) if g == group]
+
+                this_group_stats = self._get_scale_statistics(group_data,
+                                                              mask=group_mask)
 
                 # Resample the group scale
                 self._resample_scale(this_group_stats, group)

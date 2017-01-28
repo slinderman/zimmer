@@ -46,7 +46,9 @@ from pybasicbayes.util.text import progprint_xrange
 from pyhsmm.util.general import relabel_by_usage, relabel_by_permutation
 from pyslds.util import get_empirical_ar_params
 
+from pypolyagamma.distributions import MultinomialRegression
 
+from rslds.util import one_hot
 
 import zimmer.io
 importlib.reload(zimmer.io)
@@ -57,7 +59,7 @@ importlib.reload(zimmer.states)
 
 import zimmer.models
 importlib.reload(zimmer.models)
-from zimmer.models import HierarchicalInputOnlySLDS
+from zimmer.models import HierarchicalWeakLimitStickyHDPHMMSLDS, HierarchicalRecurrentOnlySLDS, HierarchicalRecurrentSLDS
 
 import zimmer.emissions
 importlib.reload(zimmer.emissions)
@@ -73,8 +75,8 @@ from zimmer.plotting import plot_1d_continuous_states, plot_3d_continuous_states
 from zimmer.util import states_to_changepoints
 
 # IO
-run_num = 5
-results_dir = os.path.join("results", "11_30_16", "run{:03d}".format(run_num))
+run_num = 1
+results_dir = os.path.join("results", "01_27_17", "run{:03d}".format(run_num))
 assert os.path.exists(results_dir)
 
 # Hyperparameters
@@ -142,17 +144,22 @@ def load_data():
 
     # Construct a big dataset with all neurons for each worm
     datasets = []
+    masks = []
     for wd in worm_datas:
-        this_dataset = []
+        this_dataset = np.zeros((wd.T, N_neurons))
+        this_mask = np.zeros((wd.T, N_neurons), dtype=bool)
         indices = wd.find_neuron_indices(all_neuron_names)
-        for index in indices:
-            if index is None:
-                this_dataset.append(None)
-            else:
-                this_dataset.append(wd.dff_deriv[:, index][:, None])
-        datasets.append(this_dataset)
+        for n, index in enumerate(indices):
+            if index is not None:
+                this_dataset[:, n] = wd.dff_deriv[:, index]
+                this_mask[:, n] = True
 
-    return perm_z_true, perm_z_key, N_neurons, Ts, all_neuron_names, datasets, Ys, Ys_shared, shared_neurons
+        datasets.append(this_dataset)
+        masks.append(this_mask)
+
+    return perm_z_true, perm_z_key, N_neurons, Ts, all_neuron_names, \
+           datasets, masks, \
+           Ys, Ys_shared, shared_neurons
 
 
 ### Fitting
@@ -166,7 +173,24 @@ def fit_pca(Ys_shared):
     C_init = pca.components_.T
     return x_inits, C_init
 
-def make_rhslds(N_neurons, datasets, Ts, z_inits=None, x_inits=None, fixed_scale=True):
+### Use a DecisionList to permute the discrete states
+def fit_decision_list(z, y):
+    print("Fitting Decision List")
+    dlist = DecisionList(K, D_latent)
+    dlist.fit(y[:-1], z[1:])
+
+    dl_reg = MultinomialRegression(1, K, D_latent)
+    dl_reg.A = dlist.weights.copy()
+    dl_reg.b = dlist.biases[:,None].copy()
+
+    z_perm = \
+        relabel_by_permutation(z, np.argsort(dlist.permutation))
+
+    return z_perm, dl_reg
+
+def _make_rhslds(model_class, N_neurons, datasets, masks, Ts,
+                 z_inits=None, x_inits=None, fixed_scale=True,
+                 **kwargs):
     dynamics_hypparams = \
         dict(nu_0=D_latent + D_in + 2,
              S_0=np.eye(D_latent),
@@ -184,33 +208,31 @@ def make_rhslds(N_neurons, datasets, Ts, z_inits=None, x_inits=None, fixed_scale
     # One emission distribution per "neuron," where some neurons
     # are observed in one worm but not another.
     if fixed_scale:
-        emission_distns = [
-            HierarchicalDiagonalRegressionFixedScale(1, D_latent + D_in, N_worms)
-            for n in range(N_neurons)
-            ]
+        emission_distns = \
+            HierarchicalDiagonalRegressionFixedScale(N_neurons, D_latent + D_in, N_worms)
+
     else:
-        emission_distns = [
-            HierarchicalDiagonalRegressionTruncatedScale(1, D_latent + D_in, N_worms, smin=0.75, smax=1.25)
-            for n in range(N_neurons)
-            ]
+        emission_distns = \
+            HierarchicalDiagonalRegressionTruncatedScale(N_neurons, D_latent + D_in, N_worms, smin=0.75, smax=1.25)
 
 
     init_dynamics_distns = [
         Gaussian(nu_0=D_latent + 2, sigma_0=3. * np.eye(D_latent), mu_0=np.zeros(D_latent), kappa_0=0.01)
         for _ in range(Nmax)]
 
-    model = HierarchicalInputOnlySLDS(
+    model = model_class(
         init_dynamics_distns=init_dynamics_distns,
         dynamics_distns=dynamics_distns,
         emission_distns=emission_distns,
         alpha=alpha,
-        init_state_distn='uniform')
+        init_state_distn='uniform',
+        **kwargs)
 
     # Add the data
-    for worm, dataset in enumerate(datasets):
+    for worm, (dataset, mask) in enumerate(zip(datasets, masks)):
         T = Ts[worm]
         inputs = np.ones((T, D_in))
-        model.add_data(data=dataset, group=worm, inputs=inputs)
+        model.add_data(data=dataset, mask=mask, group=worm, inputs=inputs)
 
         # Initialize continuous latent states
         if x_inits is not None:
@@ -234,9 +256,49 @@ def make_rhslds(N_neurons, datasets, Ts, z_inits=None, x_inits=None, fixed_scale
 
     return model
 
+def make_hslds(N_neurons, datasets, masks, Ts, z_inits=None, x_inits=None, fixed_scale=True):
+    return _make_rhslds(HierarchicalWeakLimitStickyHDPHMMSLDS, N_neurons, datasets, masks, Ts,
+            z_inits=z_inits, x_inits=x_inits, fixed_scale=fixed_scale,
+            gamma=gamma, kappa=kappa)
 
-@cached("fit_hslds")
-def fit_rhslds(model):
+def make_rhioslds(N_neurons, datasets, masks, Ts, z_inits=None, x_inits=None, fixed_scale=True,
+                  trans_distn=None):
+    kwargs = {}
+    if trans_distn is not None:
+        trans_params = dict(sigmasq_A=10000., sigmasq_b=10000.,
+                            A=trans_distn.A,
+                            b=trans_distn.b)
+        kwargs["trans_params"] = trans_params
+
+    return _make_rhslds(HierarchicalRecurrentOnlySLDS, N_neurons, datasets, masks, Ts,
+                        z_inits=z_inits, x_inits=x_inits, fixed_scale=fixed_scale)
+
+def make_rhslds(N_neurons, datasets, masks, Ts, z_inits=None, x_inits=None, fixed_scale=True,
+                trans_distn=None):
+    kwargs = {}
+    if trans_distn is not None:
+        trans_params = dict(sigmasq_A=10000., sigmasq_b=10000.,
+                            A=np.hstack((np.zeros((Nmax - 1, Nmax)), trans_distn.A)),
+                            b=trans_distn.b)
+        kwargs["trans_params"] = trans_params
+
+    return _make_rhslds(HierarchicalRecurrentSLDS, N_neurons, datasets, masks, Ts,
+                        z_inits=z_inits, x_inits=x_inits, fixed_scale=fixed_scale, **kwargs)
+
+def initialize_trans_distn(z, x, N_iter=100):
+    reg = MultinomialRegression(1, Nmax, D_latent)
+
+    xs = np.vstack(x)
+    zs = np.vstack([one_hot(zw, Nmax) for zw in z])
+    import ipdb; ipdb.set_trace()
+
+    print("Initializing transition distribution")
+    for _ in progprint_xrange(N_iter):
+        reg.resample((xs, zs[:,:-1]))
+
+    return reg
+
+def _fit_rhslds(model):
     # Fit the model with MCMC
     def evaluate(model):
         ll = model.log_likelihood()
@@ -274,6 +336,22 @@ def fit_rhslds(model):
     sigma_x_finals = [s.smoothed_sigmas for s in model.states_list]
 
     return model, lls, perm_z_smpls, perm_dynamics_distns, z_finals, x_finals, sigma_x_finals
+
+@cached("fit_hslds")
+def fit_hslds(model):
+    assert isinstance(model, HierarchicalWeakLimitStickyHDPHMMSLDS)
+    return _fit_rhslds(model)
+
+@cached("fit_rhioslds")
+def fit_rhioslds(model):
+    assert isinstance(model, HierarchicalRecurrentOnlySLDS)
+    return _fit_rhslds(model)
+
+@cached("fit_rhslds")
+def fit_rhslds(model):
+    assert isinstance(model, HierarchicalRecurrentSLDS)
+    return _fit_rhslds(model)
+
 
 ### Plotting
 def plot_identified_neurons(datasets):
@@ -806,7 +884,7 @@ def plot_neural_embedding(hslds, all_neuron_names, N_to_plot=60, worm=1):
 if __name__ == "__main__":
     # Load the data
     z_trues, z_key, N_neurons, Ts, \
-    all_neuron_names, datasets, \
+    all_neuron_names, datasets, masks, \
     Ys, Ys_shared, shared_neurons = \
         load_data()
 
@@ -820,10 +898,16 @@ if __name__ == "__main__":
     #     plot_pca_trajectories(worm, Ys[worm])
 
     # Make and fit the hierarchical SLDS
-    # hslds = make_hslds(N_neurons, datasets, Ts, x_inits=x_inits)
-    # hslds, lls, z_smpls, dynamics_distns, z_finals, x_finals, sigma_x_finals = fit_hslds(hslds)
+    hslds = make_hslds(N_neurons, datasets, masks, Ts, x_inits=x_inits)
+    hslds, lls, z_smpls, dynamics_distns, z_finals, x_finals, sigma_x_finals = fit_hslds(hslds)
 
-    rhslds = make_rhslds(N_neurons, datasets, Ts, x_inits=x_inits, fixed_scale=False)
+    # Initialize a multinomial regression for the transition model
+    trans_distn = initialize_trans_distn(z_finals, x_finals)
+
+    rhslds = make_rhslds(N_neurons, datasets, masks, Ts,
+                         z_inits=z_finals, x_inits=x_inits, fixed_scale=False,
+                         trans_distn=trans_distn)
+
     rhslds, lls, z_smpls, dynamics_distns, z_finals, x_finals, sigma_x_finals = fit_rhslds(rhslds)
 
     plot_discrete_state_samples(z_smpls[1], z_trues[1])
