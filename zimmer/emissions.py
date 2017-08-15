@@ -8,12 +8,11 @@ from pybasicbayes.util.stats import sample_gaussian, sample_invgamma
 
 class HierarchicalDiagonalRegression(DiagonalRegression):
     """
-    y_i^g ~ N(a^g (c \dot x_i), eta^g)
+    y_i^g ~ N(A \dot x_i, eta^g)
 
     where
     x_i, y_i:   covariates and observations
-    c:          shared regression weights
-    a^g:        group specific scaling
+    A:          shared regression weights
     eta^g       group specific variance
     """
     def __init__(self, D_out, D_in, N_groups,
@@ -24,12 +23,21 @@ class HierarchicalDiagonalRegression(DiagonalRegression):
         self._D_out = D_out
         self._D_in = D_in
         self.N_groups = N_groups
-        self._A = np.zeros((D_out, D_in))
-        self.scale = np.ones((N_groups, D_out))
-        self.sigmasq_flat = np.ones((N_groups, D_out))
 
+        if A is not None:
+            assert A.shape == (D_out, D_in)
+            self.A = A
+        else:
+            self.A = np.zeros((D_out, D_in))
 
-        self.affine = False  # We do not yet support affine
+        if sigmasq is not None:
+            assert sigmasq.shape == (N_groups, D_out) and np.all(sigmasq > 0)
+            self.sigmasq_flat = sigmasq
+        else:
+            self.sigmasq_flat = np.ones((N_groups, D_out))
+
+        # Affine support must be done manually
+        self.affine = False
 
         mu_0 = np.zeros(D_in) if mu_0 is None else mu_0
         Sigma_0 = np.eye(D_in) if Sigma_0 is None else Sigma_0
@@ -41,11 +49,9 @@ class HierarchicalDiagonalRegression(DiagonalRegression):
         self.beta_0 = beta_0
 
         self.niter = niter
-        self.resample(data=[], groups=[], mask=[])  # initialize from prior
 
-    @property
-    def A(self):
-        return self.scale[:, :, None] * self._A[None, :, :]
+        if A is None or sigmasq is None:
+            self.resample(data=[], groups=[], mask=[])  # initialize from prior
 
     @property
     def sigma(self):
@@ -65,7 +71,7 @@ class HierarchicalDiagonalRegression(DiagonalRegression):
         else:
             assert mask.shape == y.shape
 
-        sqerr = -0.5 * (y-x.dot(self.A[group].T))**2 * mask
+        sqerr = -0.5 * (y-x.dot(self.A.T))**2 * mask
         ll = np.sum(sqerr / self.sigmasq_flat[group], axis=1)
 
         # Add normalizer
@@ -73,52 +79,7 @@ class HierarchicalDiagonalRegression(DiagonalRegression):
 
         return ll
 
-    def _get_scale_statistics(self, data, mask=None):
-        D_out = self.D_out
-
-        if data is None:
-            return (np.zeros((D_out,)),
-                    np.zeros((D_out,)),
-                    np.zeros((D_out,)),
-                    np.zeros((D_out,)))
-
-        # Make sure data is a list
-        if not isinstance(data, list):
-            datas = [data]
-        else:
-            datas = data
-
-        # Make sure mask is also a list if given
-        if mask is not None:
-            if not isinstance(mask, list):
-                masks = [mask]
-            else:
-                masks = mask
-        else:
-            masks = [None] * len(datas)
-
-        # Sum sufficient statistics from each dataset
-        ysq = np.zeros(D_out)
-        yxT = np.zeros(D_out)
-        xxT = np.zeros(D_out)
-        n = np.zeros(D_out)
-
-        for data, mask in zip(datas, masks):
-            x, y = data
-            assert x.shape[1] == D_out
-            assert y.shape[1] == D_out
-
-            if mask is None:
-                mask = np.ones_like(y, dtype=bool)
-
-            ysq += np.sum(y**2 * mask, axis=0)
-            yxT += np.sum(y * x * mask, axis=0)
-            xxT += np.sum(x**2 * mask, axis=0)
-            n += np.sum(mask, axis=0)
-
-        return ysq, yxT, xxT, n
-
-
+    ### Gibbs
     def resample(self, data, groups=None, stats=None, mask=None, niter=None):
         """
         data is a list of tuples [(x1, y1), (x2, y2), ..., (xN,yN)]
@@ -151,26 +112,6 @@ class HierarchicalDiagonalRegression(DiagonalRegression):
             for group in range(self.N_groups):
                 self._resample_sigma(all_group_stats[group], group)
 
-            # Resample the group specific scale
-            # accounting for the shared emission matrix
-            for group in range(self.N_groups):
-                group_data = [d for d, g in zip(data, groups) if g == group]
-                group_data = [(x.dot(self._A.T), y) for (x,y) in group_data]
-                group_mask = [m for m, g in zip(mask, groups) if g == group]
-
-                this_group_stats = self._get_scale_statistics(group_data,
-                                                              mask=group_mask)
-
-                # Resample the group scale
-                self._resample_scale(this_group_stats, group)
-
-            # Resample the group specific variance
-            # for group in range(self.N_groups):
-            #     group_data = [d for d, g in zip(data, groups) if g == group]
-            #     this_group_stats = self._get_statistics(group_data, D_out=self.D_out, D_in=self.D_in)
-            #
-            #     # Resample the group variance
-            #     self._resample_sigma(this_group_stats, group)
 
     def _resample_A(self, group_stats):
         assert len(group_stats) == self.N_groups
@@ -182,97 +123,76 @@ class HierarchicalDiagonalRegression(DiagonalRegression):
 
             for group, stats in enumerate(group_stats):
                 _, yxT, xxT, _ = stats
-                Jd += self.scale[group, d]**2 * xxT[d] / self.sigmasq_flat[group, d]
-                hd += self.scale[group, d]    * yxT[d] / self.sigmasq_flat[group, d]
+                Jd += xxT[d] / self.sigmasq_flat[group, d]
+                hd += yxT[d] / self.sigmasq_flat[group, d]
 
-            self._A[d] = sample_gaussian(J=Jd, h=hd)
-
-    def _resample_scale(self, stats, group):
-
-        _, yxT, xxT, _ = stats
-
-        # Sample each row of W
-        for d in range(self.D_out):
-            # Get sufficient statistics from the data
-            Jd = np.ones((1,1)) + xxT[d] / self.sigmasq_flat[group, d]
-            hd = np.zeros(1,) + yxT[d] / self.sigmasq_flat[group, d]
-            assert Jd.size == 1
-            assert hd.size == 1
-            self.scale[group, d] = sample_gaussian(J=Jd, h=hd)
-
+            self.A[d] = sample_gaussian(J=Jd, h=hd)
 
     def _resample_sigma(self, stats, group):
         ysq, yxT, xxT, n = stats
-        A = self.A[group]
-        AAT = np.array([np.outer(a, a) for a in A])
+        AAT = np.array([np.outer(a, a) for a in self.A])
 
         alpha = self.alpha_0 + n / 2.0
 
         beta = self.beta_0
         beta += 0.5 * ysq
-        beta += -1.0 * np.sum(yxT * A, axis=1)
+        beta += -1.0 * np.sum(yxT * self.A, axis=1)
         beta += 0.5 * np.sum(AAT * xxT, axis=(1, 2))
 
         self.sigmasq_flat[group] = np.reshape(sample_invgamma(alpha, beta), (self.D_out,))
+        assert np.all(self.sigmasq_flat > 0)
 
-    ### TODO: Implement meanfield stuff
-    def meanfieldupdate(self, data=None, weights=None, stats=None, mask=None):
-        raise NotImplementedError
+    ### EM
+    def max_likelihood(self, stats, groups):
+        stats = [self._stats_ensure_array(stat) for stat in stats]
+        self._max_likelihood_A(stats, groups)
+        self._max_likelihood_sigma(stats, groups)
 
-    def max_likelihood(self, data, weights=None, stats=None, mask=None):
-        raise NotImplementedError
-
-    @property
-    def mf_expectations(self):
-        raise NotImplementedError
-
-    def meanfield_expectedstats(self):
-        raise NotImplementedError
-
-
-class HierarchicalDiagonalRegressionFixedScale(HierarchicalDiagonalRegression):
-    """
-    Same as above but with scale fixed to one
-    """
-    def __init__(self, D_out, D_in, N_groups, **kwargs):
-
-        super(HierarchicalDiagonalRegressionFixedScale, self).\
-            __init__(D_out, D_in, N_groups, **kwargs)
-
-        # Fix the scale to one
-        self.scale = np.ones((N_groups, D_out))
-
-    def _resample_scale(self, stats, group):
-        pass
-
-class HierarchicalDiagonalRegressionTruncatedScale(HierarchicalDiagonalRegression):
-    """
-    Same as above but with scale drawn from a truncated
-    normal distribution
-    """
-    def __init__(self, D_out, D_in, N_groups, smin=0.5, smax=2.0, **kwargs):
-
-        # Set the scale limits
-        self.smin = smin
-        self.smax = smax
-
-        super(HierarchicalDiagonalRegressionTruncatedScale, self).\
-            __init__(D_out, D_in, N_groups, **kwargs)
-
-
-    def _resample_scale(self, stats, group):
-        from pybasicbayes.util.stats import sample_truncated_gaussian
-        _, yxT, xxT, _ = stats
-
-        # Sample each row of W
+    def _max_likelihood_A(self, stats, groups):
+        # Update A | sigma
         for d in range(self.D_out):
-            # Get sufficient statistics from the data
-            Jd = np.ones((1, 1)) + xxT[d] / self.sigmasq_flat[group, d]
-            hd = np.ones(1, )    + yxT[d] / self.sigmasq_flat[group, d]
-            assert Jd.size == 1
-            assert hd.size == 1
+            Jd = self.J_0.copy()
+            hd = self.h_0.copy()
 
-            sigma = np.sqrt(1. / Jd)
-            mu = hd / Jd
-            self.scale[group, d] = sample_truncated_gaussian(mu, sigma, self.smin, self.smax)
+            for group, stat in zip(groups, stats):
+                _, yxT, xxT, _ = stat
+                Jd += xxT[d] / self.sigmasq_flat[group, d]
+                hd += yxT[d] / self.sigmasq_flat[group, d]
+
+            self.A[d] = np.linalg.solve(Jd, hd)
+
+    def _max_likelihood_sigma(self, stats, groups):
+        # Update sigmasq | A for each group
+        AAT = np.array([np.outer(ad, ad) for ad in self.A])
+        for g in range(self.N_groups):
+            alpha, beta = self.alpha_0, self.beta_0
+
+            # Sum statistics for this group
+            for group, stat in zip(groups, stats):
+                if group != g:
+                    continue
+
+                ysq, yxT, xxT, n = stat
+                alpha += n / 2.0
+                beta += 0.5 * ysq
+                beta += -1.0 * np.sum(yxT * self.A, axis=1)
+                beta += 0.5 * np.sum(AAT * xxT, axis=(1, 2))
+
+            self.sigmasq_flat[g] = beta / (alpha + 1.0)
+            assert np.all(self.sigmasq_flat[g] >= 0)
+
+    ### Prediction and generation
+    def predict(self, x, group=0):
+        A, sigma = self.A, self.sigma[group]
+        y = x.dot(A.T)
+        return y
+
+    def rvs(self,x=None,size=1,return_xy=True, group=0):
+        x = np.random.normal(size=(size, self.D_in)) if x is None else x
+        y = self.predict(x, group=group)
+        y += np.random.normal(size=(x.shape[0], self.D_out)) \
+            .dot(np.linalg.cholesky(self.sigma[group]).T)
+
+        return np.hstack((x,y)) if return_xy else y
+
 

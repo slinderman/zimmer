@@ -86,7 +86,7 @@ def plot_3d_continuous_states(x, z, colors,
         ax.plot(x[cp_start:cp_stop + 1, inds[0]],
                 x[cp_start:cp_stop + 1, inds[1]],
                 x[cp_start:cp_stop + 1, inds[2]],
-                '-', marker='.', markersize=3,
+                '-', marker='.', markersize=1,
                 color=colors[z[cp_start]],
                 **kwargs)
 

@@ -458,7 +458,7 @@ def plot_3d_dynamics(dynamics_distns, z, x):
         fig.savefig(os.path.join(results_dir, "dynamics_3d_{}.pdf".format(k)))
         plt.close(fig)
 
-def make_dynamics_3d_movie(worm, z_finals, x_finals, perm_dynamics_distns):
+def make_dynamics_3d_movie(z_finals, x_finals, perm_dynamics_distns, title=None, filename=None):
     FFMpegWriter = manimation.writers['ffmpeg']
     metadata = dict(title='3d vector field')
     writer = FFMpegWriter(fps=15, bitrate=1024, metadata=metadata)
@@ -468,7 +468,7 @@ def make_dynamics_3d_movie(worm, z_finals, x_finals, perm_dynamics_distns):
     ax = fig.add_subplot(111, projection='3d')
 
     for ii in range(Kmax):
-        plot_vector_field_3d(ii, z_finals[worm], x_finals[worm], perm_dynamics_distns, colors,
+        plot_vector_field_3d(ii, z_finals, x_finals, perm_dynamics_distns, colors,
                              affine=(D_in == 1), ax=ax, lims=(-4, 4), alpha=0.75, N_plot=150, length=.2)
     ax.set_xlabel("")
     ax.set_ylabel("")
@@ -477,7 +477,7 @@ def make_dynamics_3d_movie(worm, z_finals, x_finals, perm_dynamics_distns):
     ax.set_yticklabels([])
     ax.set_zticklabels([])
 
-    plt.title("Worm {}".format(worm + 1))
+    plt.title(title)
 
     def update_frame(i):
         # Rotate the xy plane
@@ -486,7 +486,43 @@ def make_dynamics_3d_movie(worm, z_finals, x_finals, perm_dynamics_distns):
         # Plot the trajectories
         #         plot_trajectories(i, lns)
 
-    filename = os.path.join(results_dir, "dynamics_overlay_3d_worm{}.mp4".format(worm))
+    filename = os.path.join(results_dir, filename)
+    with writer.saving(fig, filename, 150):
+        for i in progprint_xrange(360):
+            update_frame(i)
+            writer.grab_frame()
+
+def make_states_3d_movie(z_finals, x_finals, title=None, filename=None):
+    FFMpegWriter = manimation.writers['ffmpeg']
+    metadata = dict(title='3d states field')
+    writer = FFMpegWriter(fps=15, bitrate=1024, metadata=metadata)
+
+    # overlay = False
+    fig = plt.figure(figsize=(4, 4))
+    ax = create_axis_at_location(fig, 0, 0, 4, 4, projection="3d")
+    # ax = fig.add_subplot(111, projection='3d')
+
+    plot_3d_continuous_states(x_finals, z_finals, colors,
+                              ax=ax,
+                              lw=1)
+
+    ax.set_xlabel("")
+    ax.set_ylabel("")
+    ax.set_zlabel("")
+    ax.set_xticklabels([])
+    ax.set_yticklabels([])
+    ax.set_zticklabels([])
+
+    plt.title(title)
+
+    def update_frame(i):
+        # Rotate the xy plane
+        ax.view_init(elev=30., azim=i)
+
+        # Plot the trajectories
+        #         plot_trajectories(i, lns)
+
+    filename = os.path.join(results_dir, filename)
     with writer.saving(fig, filename, 150):
         for i in progprint_xrange(360):
             update_frame(i)
@@ -746,6 +782,40 @@ def plot_all_neural_activity(worm, Ys_shared, shared_neurons):
     plt.savefig(os.path.join(results_dir, "shared_activity_worm{}.pdf".format(worm)))
 
 
+def plot_generated_neural_activity(y, neuron_names, title=None, filename=None):
+    T, N = y.shape
+    # N = 10
+    ylim = abs(datasets[1]).max()
+
+    sns.set_style("white")
+    fig = plt.figure(figsize=(5.5,5))
+    for n in range(N):
+        ax = fig.add_subplot(N, 1, n+1)
+        ax.plot(y[:,n], '-k', lw=0.5)
+
+        ax.set_xticks(np.arange(T, step=500))
+        ax.set_xlim(0,T)
+
+        ax.set_ylabel(neuron_names[n], rotation=0, labelpad=10)
+        # ax.yaxis.set_label_coords(-0.1, -0.5 * ylim)
+        # ax.set_ylabel(" ", rotation=0)
+        # ax.text(-100, 0, shared_neurons[n])
+        ax.set_ylim(-1.1*ylim, 1.1*ylim)
+        ax.set_yticklabels([])
+        if n == N-1:
+            ax.set_xlabel("Time")
+        else:
+            ax.set_xticklabels([])
+
+        if n == 0:
+            ax.set_title(title)
+
+        sns.despine()
+
+    plt.tight_layout()
+    if filename is not None:
+        plt.savefig(os.path.join(results_dir, filename))
+
 def plot_neural_embedding(hslds, all_neuron_names, N_to_plot=60, worm=1):
 
     # Read in the true 1D locations
@@ -809,6 +879,7 @@ def plot_neural_embedding(hslds, all_neuron_names, N_to_plot=60, worm=1):
     plt.tight_layout()
     plt.savefig(os.path.join(results_dir, "neuron_embedding.pdf"))
 
+
 if __name__ == "__main__":
     # Load the data
     z_trues, z_key, N_neurons, Ts, \
@@ -832,37 +903,142 @@ if __name__ == "__main__":
     hslds = make_hslds(N_neurons, datasets, masks, Ts, x_inits=x_inits, fixed_scale=False)
     hslds, lls, z_smpls, dynamics_distns, z_finals, x_finals, sigma_x_finals = fit_hslds(hslds)
 
-    # plot_discrete_state_samples(z_smpls[1], z_trues[1])
-    # plot_changepoint_prs(z_smpls[1], z_trues[1], title="Worm 2 Discrete States")
+    worm = 1
 
-    # for worm in range(N_worms):
-    #     fig = plt.figure(figsize=(2.5,2.5))
-    #     ax = create_axis_at_location(fig, 0.025, 0.025, 2.35, 2.35, projection="3d")
-    #     plot_3d_continuous_states(x_finals[worm], z_finals[worm],
-    #                               ax=ax,
-    #                               title="Worm {} Latent States".format(worm+1),
-    #                               colors=colors, lw=0.5, alpha=0.75, figsize=(3,3),
-    #                               results_dir=results_dir, filename="xs_3d_worm{}.pdf".format(worm))
+    plot_discrete_state_samples(z_smpls[worm], z_trues[worm])
+    plot_changepoint_prs(z_smpls[worm], z_trues[worm], title="Worm 2 Discrete States")
 
     # Plot the state dynamics
-    # plot_3d_dynamics(dynamics_distns, np.concatenate(z_finals), np.vstack(x_finals))
-
-    # Make 3D animations of worm dynamics
-    # for w in range(N_worms):
-    #     make_dynamics_3d_movie(w, z_finals, x_finals, dynamics_distns)
+    plot_3d_dynamics(dynamics_distns, np.concatenate(z_finals), np.vstack(x_finals))
 
 
-    # neurons_to_plot = ["AVAL", "AVAR", "AVBL", "AVER", "RIML", "RIMR"]
-    # for worm in range(N_worms):
-    #     plot_smoothed_neural_activity(neurons_to_plot, worm, hslds,
-    #                                   x_finals, sigma_x_finals,
-    #                                   Ys_shared, shared_neurons, all_neuron_names,
-    #                                   z= z_finals[worm])
+    # plot_3d_continuous_states(x_finals[worm], z_finals[worm], colors,
+    #                           figsize=(4, 4),
+    #                           title="Worm {} States".format(worm+1),
+    #                           results_dir=results_dir,
+    #                           filename="worm_{}_3d_states.pdf".format(worm+1),
+    #                           lw=1)
+    #
+
+    # make_dynamics_3d_movie(z_finals[worm], x_finals[worm], dynamics_distns,
+    #                      title="Inferred Dynamics",
+    #                      filename="dynamics.mp4")
+    #
+    # make_states_3d_movie(z_finals[worm], x_finals[worm],
+    #                      title="Smoothed States",
+    #                      filename="smoothed_states.mp4")
+
+    ## Simulate from the hSLDS
+    # init_dynamics_distns = [
+    #     Gaussian(nu_0=D_latent + 2, sigma_0=3. * np.eye(D_latent), mu_0=np.zeros(D_latent), kappa_0=0.01,
+    #              mu=x_finals[worm][0], sigma=0.01 * np.eye(D_latent))
+    #     for _ in range(Kmax)]
+    # hslds.init_dynamics_distns = init_dynamics_distns
+    #
+    # print("Simulating hSLDS")
+    # T_gen = 2000
+    # inputs = np.ones((T_gen, 1))
+    # hslds_y_gen, hslds_x_gen, hslds_z_gen = hslds.generate(T=T_gen, inputs=inputs, group=worm)
+    # print("Done")
+    #
+    #
+    # plot_3d_continuous_states(hslds_x_gen, hslds_z_gen, colors,
+    #                           figsize=(4, 4),
+    #                           title="hSLDS Generated States",
+    #                           results_dir=results_dir,
+    #                           filename="generated_hslds_3d_states.pdf",
+    #                           lw=1)
+    #
+    #
+    # make_states_3d_movie(hslds_z_gen, hslds_x_gen,
+    #                      title="hSLDS Generated States",
+    #                      filename="generated_hslds_states.mp4")
 
 
-    # plot_neural_embedding(hslds, all_neuron_names)
+    ################################################
+    # BOOTSTRAP A RSLDS
+    ################################################
 
-    # plot_state_dependent_neural_activity(z_finals, Ys_shared, shared_neurons)
-    # plot_subset_of_state_dependent_neural_activity(z_finals, Ys_shared)
-    # plt.show()
 
+    # Now try to estimate the transition probabilities
+    worm = 1
+    N_used = len(np.unique(z_finals[worm]))
+    from rslds.util import one_hot
+    from sklearn.linear_model.logistic import LogisticRegression
+    lr = LogisticRegression(verbose=False, multi_class="multinomial", solver="lbfgs")
+    lr_X = np.column_stack((one_hot(z_finals[worm][:-1], Kmax), x_finals[worm][:-1]))
+    lr_y = z_finals[worm][1:]
+    lr.fit(lr_X, lr_y)
+
+    # See how well the classifier performs
+    lr_score = lr.predict_proba(lr_X)
+    lr_z = lr.predict(lr_X)
+
+    ## Now use this to initialize an rSLDS
+    init_dynamics_distns = [
+        Gaussian(nu_0=D_latent + 2, sigma_0=3. * np.eye(D_latent), mu_0=np.zeros(D_latent), kappa_0=0.01,
+                 mu=x_finals[worm][0], sigma=0.01 * np.eye(D_latent))
+        for _ in range(Kmax)]
+
+    dynamics_distns = copy.deepcopy(dynamics_distns)
+    for dd in dynamics_distns:
+        dd.sigma *= 0.01
+
+    emission_distn = \
+        DiagonalRegression(N_neurons, D_latent + 1,
+                           A=hslds.emission_distns[0].A[worm].copy(),
+                           sigmasq=0.01*hslds.emission_distns[0].sigmasq_flat[worm].copy(),
+                           alpha_0=2.0, beta_0=2.0)
+
+    from rslds.nonconj_rslds import SoftmaxRecurrentSLDS
+    rslds = SoftmaxRecurrentSLDS(
+        init_state_distn='uniform',
+        init_dynamics_distns=init_dynamics_distns,
+        dynamics_distns=dynamics_distns,
+        emission_distns=emission_distn,
+        fixed_emission=False,
+        alpha=3.)
+
+    # Now convert the logistic regression into weights
+    W = np.zeros((D_latent, Kmax))
+    W[:, :N_used] = lr.coef_[:, Kmax:].T
+    logpi = np.zeros((Kmax, Kmax))
+    logpi[:,:N_used] = lr.coef_[:,:Kmax].T
+
+    logpi[:,:N_used] += lr.intercept_[None, :]
+    logpi[:,N_used:] += -100.
+
+    rslds.trans_distn.W = W
+    rslds.trans_distn.logpi = logpi
+
+    # DEBUG
+    trans_matrices = rslds.trans_distn.get_trans_matrices(x_finals[worm][:-1])
+    score = trans_matrices[np.arange(Ts[worm]-1), z_finals[worm][:-1]]
+    lr_score = lr.predict_proba(lr_X)
+    assert np.allclose(score[0, :N_used], lr_score[0])
+    ## END DEBUG
+
+    ## SIMULATE
+    print("Simulating rSLDS")
+    T_gen = 2000
+    inputs = np.ones((T_gen, 1))
+    (rslds_y_gen, rslds_x_gen), rslds_z_gen = rslds.generate(T=T_gen, inputs=inputs, with_noise=True)
+    print("Done")
+
+    plot_3d_continuous_states(rslds_x_gen, rslds_z_gen, colors,
+                              figsize=(4, 4),
+                              title="Generated States",
+                              results_dir=results_dir,
+                              filename="generated_rslds_3d_states.pdf",
+                              lw=1)
+    #
+    # make_states_3d_movie(rslds_z_gen, rslds_x_gen,
+    #                      title="rhSLDS Generated States",
+    #                      filename="generated_rslds_states.mp4")
+
+
+    neurons_to_plot = ["AVAL", "AVAR", "AVBL", "AVER", "RIML", "RIMR"]
+    inds = np.concatenate([np.where(all_neuron_names==name) for name in neurons_to_plot]).ravel()
+    plot_generated_neural_activity(datasets[worm][:T_gen, inds], neurons_to_plot, title="Actual Data", filename="actual_data.pdf")
+    plot_generated_neural_activity(rslds_y_gen[:, inds], neurons_to_plot, title="Generated Data", filename="rslds_data.pdf")
+    plt.show()

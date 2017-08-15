@@ -1,11 +1,13 @@
 # Build specific models for joint observations
 import numpy as np
 
-from pyslds.states import _SLDSStatesMaskedData, _SLDSStatesGibbs, HMMStatesEigen
+from pyslds.states import _SLDSStatesMaskedData, _SLDSStatesGibbs,\
+    _SLDSStatesVBEM, HMMStatesEigen
 
 
 class HierarchicalSLDSStates(_SLDSStatesMaskedData,
                              _SLDSStatesGibbs,
+                             _SLDSStatesVBEM,
                              HMMStatesEigen):
     """
     Let's try a new approach in which hierarchical states just have a tag
@@ -25,64 +27,18 @@ class HierarchicalSLDSStates(_SLDSStatesMaskedData,
         self.group = group
         super(HierarchicalSLDSStates, self).__init__(model, **kwargs)
 
+    ### Override properties with group-specific covariance
     @property
-    def _info_emission_params_diag(self):
-        if self.model._single_emission:
-
-            C = self.emission_distns[0].A[self.group, :, :self.D_latent]
-            D = self.emission_distns[0].A[self.group, :, self.D_latent:]
-            CCT = np.array([np.outer(cp, cp) for cp in C]). \
-                reshape((self.D_emission, self.D_latent ** 2))
-
-            sigmasq = self.emission_distns[0].sigmasq_flat[self.group]
-            J_obs = self.mask / sigmasq
-            centered_data = self.data - self.inputs.dot(D.T)
-
-            J_node = np.dot(J_obs, CCT)
-
-            # h_node = y^T R^{-1} C - u^T D^T R^{-1} C
-            h_node = (centered_data * J_obs).dot(C)
-
-            log_Z_node = -self.mask.sum(1) / 2. * np.log(2 * np.pi)
-            log_Z_node -= 1. / 2 * np.sum(self.mask * np.log(sigmasq), axis=1)
-            log_Z_node -= 1. / 2 * np.sum(centered_data ** 2 * J_obs, axis=1)
-
-
-        else:
-            expand = lambda a: a[None, ...]
-            stack_set = lambda x: np.concatenate(list(map(expand, x)))
-
-            sigmasq_set = [d.sigmasq_flat[self.group] for d in self.emission_distns]
-            sigmasq = stack_set(sigmasq_set)[self.stateseq]
-            J_obs = self.mask / sigmasq
-
-            C_set = [d.A[self.group, :, :self.D_latent] for d in self.emission_distns]
-            D_set = [d.A[self.group, :, self.D_latent:] for d in self.emission_distns]
-            CCT_set = [np.array([np.outer(cp, cp) for cp in C]).
-                           reshape((self.D_emission, self.D_latent ** 2))
-                       for C in C_set]
-
-            J_node = np.zeros((self.T, self.D_latent ** 2))
-            h_node = np.zeros((self.T, self.D_latent))
-            log_Z_node = -self.mask.sum(1) / 2. * np.log(2 * np.pi) * np.ones(self.T)
-
-            for i in range(len(self.emission_distns)):
-                ti = np.where(self.stateseq == i)[0]
-                centered_data_i = self.data[ti] - self.inputs[ti].dot(D_set[i].T)
-
-                J_node[ti] = np.dot(J_obs[ti], CCT_set[i])
-                h_node[ti] = (centered_data_i * J_obs[ti]).dot(C_set[i])
-
-                log_Z_node[ti] -= 1. / 2 * np.sum(np.log(sigmasq_set[i]))
-                log_Z_node[ti] -= 1. / 2 * np.sum(centered_data_i ** 2 * J_obs[ti], axis=1)
-
-        J_node = J_node.reshape((self.T, self.D_latent, self.D_latent))
-        return J_node, h_node, log_Z_node
+    def R_set(self):
+        return np.concatenate([np.diag(d.sigmasq_flat[self.group])[None, ...]
+                               for d in self.emission_distns])
 
     @property
-    def _info_emission_params_dense(self):
-        raise NotImplementedError
+    def Rinv_set(self):
+        return np.concatenate([np.diag(1. / d.sigmasq_flat[self.group])[None, ...]
+                               for d in self.emission_distns])
 
+    # Use group specific variances to calculate likelihoods
     @property
     def aBl(self):
         if self._aBl is None:
@@ -117,8 +73,67 @@ class HierarchicalSLDSStates(_SLDSStatesMaskedData,
 
         return self._aBl
 
-from rslds.rslds import RecurrentSLDSStates
-class HierarchicalRecurrentSLDSStates(HierarchicalSLDSStates, RecurrentSLDSStates):
-    pass
+    @property
+    def vbem_aBl(self):
+        """
+        These are the expected log likelihoods (node potentials)
+        as seen from the discrete states.  In other words,
+        E_{q(x)} [log p(y, x | z)]
+        """
+        from pyslds.util import expected_gaussian_logprob, expected_diag_regression_log_prob, \
+            expected_regression_log_prob
+        vbem_aBl = np.zeros((self.T, self.num_states))
+        ids, dds, eds = self.init_dynamics_distns, self.dynamics_distns, self.emission_distns
+
+        for k, (id, dd) in enumerate(zip(ids, dds)):
+            vbem_aBl[0, k] = expected_gaussian_logprob(id.mu, id.sigma, self.E_init_stats)
+            vbem_aBl[:-1, k] += expected_regression_log_prob(dd, self.E_dynamics_stats)
+
+        # Override to use the group-specific sigma
+        if self.single_emission:
+            ed = self.emission_distns[0]
+            vbem_aBl += expected_diag_regression_log_prob(ed.A, ed.sigmasq_flat[self.group], self.E_emission_stats)[:,None]
+        else:
+            for k, ed in enumerate(self.emission_distns):
+                vbem_aBl[:, k] += expected_diag_regression_log_prob(ed.A, ed.sigmasq_flat[self.group], self.E_emission_stats)
+
+        vbem_aBl[np.isnan(vbem_aBl).any(1)] = 0.
+        return vbem_aBl
+
+    def generate_obs(self):
+        # Go through each time bin, get the discrete latent state,
+        # use that to index into the emission_distns to get samples
+        T, p = self.T, self.D_emission
+        dss, gss = self.stateseq, self.gaussian_states
+        data = np.empty((T,p),dtype='double')
+
+        for t in range(self.T):
+            ed = self.emission_distns[0] if self.model._single_emission \
+                else self.emission_distns[dss[t]]
+            data[t] = \
+                ed.rvs(x=np.hstack((gss[t][None, :], self.inputs[t][None,:])),
+                       return_xy=False, group=self.group)
+
+        return data
+
+
+from rslds.states import SoftmaxRecurrentSLDSStates
+class HierarchicalRecurrentSLDSStates(HierarchicalSLDSStates, SoftmaxRecurrentSLDSStates):
+
+    @property
+    def vbem_info_emission_params(self):
+        J_node, h_node, log_Z_node = \
+            super(HierarchicalRecurrentSLDSStates, self).vbem_info_emission_params
+
+        J_rec, h_rec = self.vbem_info_rec_params
+        return J_node + J_rec, h_node + h_rec, log_Z_node
+
+    @property
+    def vbem_aBl(self):
+        aBl = super(HierarchicalRecurrentSLDSStates, self).vbem_aBl
+
+        # Add in node potentials from transitions
+        aBl += self._vbem_aBl_rec
+        return aBl
 
 

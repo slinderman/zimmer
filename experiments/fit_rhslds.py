@@ -59,7 +59,11 @@ importlib.reload(zimmer.states)
 
 import zimmer.models
 importlib.reload(zimmer.models)
-from zimmer.models import HierarchicalWeakLimitStickyHDPHMMSLDS, HierarchicalRecurrentOnlySLDS, HierarchicalRecurrentSLDS
+from zimmer.models import HierarchicalWeakLimitStickyHDPHMMSLDS, \
+    HierarchicalRecurrentOnlySLDS, \
+    HierarchicalRecurrentSLDS,  \
+    HierarchicalStickyRecurrentOnlySLDS, \
+    HierarchicalStickyRecurrentSLDS
 
 import zimmer.emissions
 importlib.reload(zimmer.emissions)
@@ -71,8 +75,9 @@ import zimmer.plotting
 importlib.reload(zimmer.plotting)
 from zimmer.plotting import plot_1d_continuous_states, plot_3d_continuous_states, plot_vector_field_3d
 
-
 from zimmer.util import states_to_changepoints
+
+from rslds.nonconj_rslds import SoftmaxRecurrentOnlySLDS
 
 # IO
 run_num = 1
@@ -80,7 +85,7 @@ results_dir = os.path.join("results", "01_27_17", "run{:03d}".format(run_num))
 assert os.path.exists(results_dir)
 
 # Hyperparameters
-Nmax = 15      # number of latent discrete states
+Kmax = 15      # number of latent discrete states
 D_latent = 3   # latent linear dynamics' dimension
 D_in = 1       # number of input dimensions
 
@@ -203,7 +208,7 @@ def _make_rhslds(model_class, N_neurons, datasets, masks, Ts,
             A=np.hstack((0.99 * np.eye(D_latent), np.zeros((D_latent, D_in)))),
             sigma=np.eye(D_latent),
             **dynamics_hypparams)
-        for _ in range(Nmax)]
+        for _ in range(Kmax)]
 
     # One emission distribution per "neuron," where some neurons
     # are observed in one worm but not another.
@@ -218,7 +223,7 @@ def _make_rhslds(model_class, N_neurons, datasets, masks, Ts,
 
     init_dynamics_distns = [
         Gaussian(nu_0=D_latent + 2, sigma_0=3. * np.eye(D_latent), mu_0=np.zeros(D_latent), kappa_0=0.01)
-        for _ in range(Nmax)]
+        for _ in range(Kmax)]
 
     model = model_class(
         init_dynamics_distns=init_dynamics_distns,
@@ -243,7 +248,7 @@ def _make_rhslds(model_class, N_neurons, datasets, masks, Ts,
             model.states_list[-1].stateseq = z_inits[worm]
         else:
             runlen = 10
-            z0 = np.random.choice(Nmax, size=(T//10))
+            z0 = np.random.choice(Kmax, size=(T // 10))
             z0 = np.repeat(z0, runlen)
             z0 = z0[:T] if len(z0) > T else z0
             z0 = np.concatenate((z0, z0[-1] * np.ones(T-len(z0))))
@@ -252,7 +257,9 @@ def _make_rhslds(model_class, N_neurons, datasets, masks, Ts,
             model.states_list[-1].stateseq = z0
 
     # Resample parameters once to be consistent with x_init
-    model.resample_parameters()
+    # for _ in progprint_xrange(1):
+    for _ in range(1):
+        model.resample_parameters()
 
     return model
 
@@ -277,24 +284,141 @@ def make_rhslds(N_neurons, datasets, masks, Ts, z_inits=None, x_inits=None, fixe
                 trans_distn=None):
     kwargs = {}
     if trans_distn is not None:
-        trans_params = dict(sigmasq_A=10000., sigmasq_b=10000.,
-                            A=np.hstack((np.zeros((Nmax - 1, Nmax)), trans_distn.A)),
+        mu_A = trans_distn.A.copy()
+        sigmasq_A = np.zeros((Kmax - 1, Kmax+ D_latent, Kmax + D_latent))
+        for k in range(Kmax - 1):
+            sigmasq_A[k, :Kmax, :Kmax] = 1e-8 * np.eye(Kmax)
+            sigmasq_A[k, Kmax:, Kmax:] = np.eye(D_latent)
+
+        trans_params = dict(mu_A=mu_A, sigmasq_A=sigmasq_A, sigmasq_b=100.,
+                            A=trans_distn.A,
                             b=trans_distn.b)
         kwargs["trans_params"] = trans_params
 
     return _make_rhslds(HierarchicalRecurrentSLDS, N_neurons, datasets, masks, Ts,
                         z_inits=z_inits, x_inits=x_inits, fixed_scale=fixed_scale, **kwargs)
 
+
+def make_srhslds(N_neurons, datasets, masks, Ts, z_inits=None, x_inits=None, fixed_scale=True,
+                trans_distn=None):
+    kwargs = {}
+    if trans_distn is not None:
+        trans_params = dict(sigmasq_A=10000., sigmasq_b=10000.,
+                            A=np.hstack((np.zeros((Kmax - 1, Kmax)), trans_distn.A)),
+                            b=trans_distn.b, kappa=kappa)
+        kwargs["trans_params"] = trans_params
+    else:
+        trans_params = dict(kappa=10.0)
+        kwargs["trans_params"] = trans_params
+
+    return _make_rhslds(HierarchicalStickyRecurrentSLDS, N_neurons, datasets, masks, Ts,
+                        z_inits=z_inits, x_inits=x_inits, fixed_scale=fixed_scale, **kwargs)
+
+def make_srohslds(N_neurons, datasets, masks, Ts, z_inits=None, x_inits=None, fixed_scale=True,
+                trans_distn=None):
+    kwargs = {}
+    if trans_distn is not None:
+        trans_params = dict(sigmasq_A=10000., sigmasq_b=10000.,
+                            A=np.hstack((np.zeros((Kmax - 1, Kmax)), trans_distn.A)),
+                            b=trans_distn.b, kappa=3.0)
+        kwargs["trans_params"] = trans_params
+
+    return _make_rhslds(HierarchicalStickyRecurrentOnlySLDS, N_neurons, datasets, masks, Ts,
+                        z_inits=z_inits, x_inits=x_inits, fixed_scale=fixed_scale, **kwargs)
+
+
+def make_nonconj_rslds(N_neurons, datasets, masks, Ts,
+                 z_inits=None, x_inits=None, C_init=None,
+                 **kwargs):
+
+    dynamics_hypparams = \
+        dict(nu_0=D_latent + D_in + 2,
+             S_0=np.eye(D_latent),
+             M_0=np.zeros((D_latent, D_latent + D_in)),
+             K_0=np.eye(D_latent + D_in),
+             affine=False)
+
+    dynamics_distns = [
+        Regression(
+            A=np.hstack((0.99 * np.eye(D_latent), np.zeros((D_latent, D_in)))),
+            sigma=np.eye(D_latent),
+            **dynamics_hypparams)
+        for _ in range(Kmax)]
+
+    # One emission distribution per "neuron," where some neurons
+    # are observed in one worm but not another.
+    emission_distns = \
+        DiagonalRegression(N_neurons, D_latent + 1,
+                           A=C_init, sigmasq=np.ones(N_neurons),
+                           alpha_0=2.0, beta_0=2.0)
+
+
+    init_dynamics_distns = [
+        Gaussian(nu_0=D_latent + 2, sigma_0=3. * np.eye(D_latent), mu_0=np.zeros(D_latent), kappa_0=0.01)
+        for _ in range(Kmax)]
+
+    model = SoftmaxRecurrentOnlySLDS(
+        init_state_distn='uniform',
+        init_dynamics_distns=init_dynamics_distns,
+        dynamics_distns=dynamics_distns,
+        emission_distns=emission_distns,
+        fixed_emission=False,
+        alpha=alpha)
+
+    # Add the data
+    for worm, (dataset, mask) in enumerate(zip(datasets[:1], masks[:1])):
+        T = Ts[worm]
+        inputs = np.ones((T, D_in))
+        model.add_data(data=dataset, mask=mask, inputs=inputs)
+
+        # Initialize continuous latent states
+        if x_inits is not None:
+            model.states_list[-1].gaussian_states = x_inits[worm][:, :D_latent]
+
+        # Initialize discrete latent states
+        if z_inits is not None:
+            model.states_list[-1].stateseq = z_inits[worm]
+        else:
+            runlen = 10
+            z0 = np.random.choice(Kmax, size=(T // 10))
+            z0 = np.repeat(z0, runlen)
+            z0 = z0[:T] if len(z0) > T else z0
+            z0 = np.concatenate((z0, z0[-1] * np.ones(T-len(z0))))
+            z0 = z0.astype(np.int32)
+            assert len(z0) == T
+            model.states_list[-1].stateseq = z0
+
+    # Resample parameters once to be consistent with x_init
+    # for _ in progprint_xrange(1):
+    model._init_mf_from_gibbs()
+
+    return model
+
+
 def initialize_trans_distn(z, x, N_iter=100):
-    reg = MultinomialRegression(1, Nmax, D_latent)
+    reg = MultinomialRegression(1, Kmax, D_latent)
 
     xs = np.vstack(x)
-    zs = np.vstack([one_hot(zw, Nmax) for zw in z])
-    import ipdb; ipdb.set_trace()
+    zs = np.vstack([one_hot(zw, Kmax) for zw in z])
 
     print("Initializing transition distribution")
     for _ in progprint_xrange(N_iter):
         reg.resample((xs, zs[:,:-1]))
+
+    return reg
+
+def initialize_trans_distn_with_hdphmm(A):
+    reg = MultinomialRegression(1, Kmax, Kmax + D_latent)
+
+    # Convert a transition matrix into a set of stick breaking weights
+    assert A.shape == (Kmax, Kmax)
+    from rslds.util import pi_to_psi
+
+    assert reg.A.shape == (Kmax-1, Kmax + D_latent)
+    reg.b = np.reshape(reg.mu_b, (Kmax-1, 1))
+    reg.A = np.zeros((Kmax-1, Kmax+D_latent))
+    for k in range(Kmax):
+        reg.A[:,k] = pi_to_psi(A[k]) - reg.mu_b
 
     return reg
 
@@ -307,6 +431,7 @@ def _fit_rhslds(model):
 
     def update(model):
         model.resample_model()
+        # model.resample_lds_parameters()
         return evaluate(model)
 
     smpls = [update(model) for itr in progprint_xrange(N_samples)]
@@ -342,16 +467,41 @@ def fit_hslds(model):
     assert isinstance(model, HierarchicalWeakLimitStickyHDPHMMSLDS)
     return _fit_rhslds(model)
 
-@cached("fit_rhioslds")
-def fit_rhioslds(model):
-    assert isinstance(model, HierarchicalRecurrentOnlySLDS)
-    return _fit_rhslds(model)
-
-@cached("fit_rhslds")
+# @cached("fit_rhslds")
 def fit_rhslds(model):
     assert isinstance(model, HierarchicalRecurrentSLDS)
     return _fit_rhslds(model)
 
+@cached("fit_srhslds")
+def fit_srhslds(model):
+    assert isinstance(model, HierarchicalStickyRecurrentSLDS)
+    return _fit_rhslds(model)
+
+
+@cached("fit_rohslds")
+def fit_rohslds(model):
+    assert isinstance(model, HierarchicalRecurrentOnlySLDS)
+    return _fit_rhslds(model)
+
+
+@cached("fit_srohslds")
+def fit_srohslds(model):
+    assert isinstance(model, HierarchicalStickyRecurrentOnlySLDS)
+    return _fit_rhslds(model)
+
+def fit_nonconj_rslds(rslds, N_iters=100):
+    # Fit the model
+    vlbs = []
+    z_smpls = [np.argmax(rslds.states_list[0].expected_states, axis=1)]
+    for _ in progprint_xrange(N_iters):
+        vlbs.append(rslds.meanfield_coordinate_descent_step(compute_vlb=True))
+        z_smpls.append(np.argmax(rslds.states_list[0].expected_states, axis=1))
+
+    x_smpl = rslds.states_list[0].smoothed_mus
+    z_smpls = np.array(z_smpls)
+    vlbs = np.array(vlbs)
+
+    return rslds, vlbs, z_smpls, x_smpl
 
 ### Plotting
 def plot_identified_neurons(datasets):
@@ -407,7 +557,7 @@ def plot_discrete_state_samples(z_smpls, z_true):
     ax2 = fig.add_subplot(gs[-2])
     ax3 = fig.add_subplot(gs[-1])
 
-    assert len(colors) > Nmax
+    assert len(colors) > Kmax
 
     im = ax1.matshow(z_smpls, aspect='auto', cmap=cmap, vmin=0, vmax=len(colors) - 1)
     ax1.autoscale(False)
@@ -519,13 +669,15 @@ def plot_pca_trajectories(worm, Y):
 
 
 def plot_3d_dynamics(dynamics_distns, z, x):
-    for k in range(Nmax):
+    # import ipdb; ipdb.set_trace()
+    for k in range(len(dynamics_distns)):
         fig = plt.figure(figsize=(2.5, 2.5))
         # ax = fig.add_subplot(111, projection='3d')
         ax = create_axis_at_location(fig, 0.025, 0.025, 2.35, 2.35, projection="3d")
         plot_vector_field_3d(k, z, x, dynamics_distns, colors,
                              arrow_length_ratio=0.5, pivot="middle",
-                             affine=(D_in == 1), ax=ax, lims=(-6, 6), alpha=0.8, N_plot=200, length=0.5, lw=0.75)
+                             affine=(D_in == 1), ax=ax, lims=(-6, 6), alpha=0.8,
+                             N_plot=200, length=0.5, lw=0.75)
         ax.set_title("State {}".format(k+1))
         fig.savefig(os.path.join(results_dir, "dynamics_3d_{}.pdf".format(k)))
         plt.close(fig)
@@ -539,7 +691,7 @@ def make_dynamics_3d_movie(worm, z_finals, x_finals, perm_dynamics_distns):
     fig = plt.figure(figsize=(8, 8))
     ax = fig.add_subplot(111, projection='3d')
 
-    for ii in range(Nmax):
+    for ii in range(Kmax):
         plot_vector_field_3d(ii, z_finals[worm], x_finals[worm], perm_dynamics_distns, colors,
                              affine=(D_in == 1), ax=ax, lims=(-4, 4), alpha=0.75, N_plot=150, length=.2)
     ax.set_xlabel("")
@@ -573,7 +725,7 @@ def plot_state_dependent_neural_activity(zs, Ys_shared, shared_neurons):
     cps = states_to_changepoints(z)
     cps_start, cps_stop = cps[:-1], cps[1:]
     N_shared = Ys_shared[0].shape[1]
-    for kk in range(Nmax):
+    for kk in range(Kmax):
         # for kk in range(1):
         # Find all the instances of this state
         kk_start = cps_start[z[cps_start] == kk]
@@ -647,7 +799,7 @@ def plot_subset_of_state_dependent_neural_activity(zs, Ys_shared):
     cps_start, cps_stop = cps[:-1], cps[1:]
     N_shared = Ys_shared[0].shape[1]
     neurons_to_plot = ["AVAL", "AVAR", "AVBL", "AVER", "RIML", "RIMR"]
-    for kk in range(Nmax):
+    for kk in range(Kmax):
         # for kk in range(1):
         # Find all the instances of this state
         kk_start = cps_start[z[cps_start] == kk]
@@ -902,33 +1054,72 @@ if __name__ == "__main__":
     hslds, lls, z_smpls, dynamics_distns, z_finals, x_finals, sigma_x_finals = fit_hslds(hslds)
 
     # Initialize a multinomial regression for the transition model
-    trans_distn = initialize_trans_distn(z_finals, x_finals)
+    # trans_distn = initialize_trans_distn_with_hdphmm(hslds.trans_distn.trans_matrix)
+    # rhslds = make_rhslds(N_neurons, datasets, masks, Ts,
+    #                      z_inits=z_finals, x_inits=x_finals, fixed_scale=False, trans_distn=trans_distn)
+    #
+    # # Initialization
+    # for rdd, dd2 in zip(rhslds.dynamics_distns, dynamics_distns):
+    #     rdd.A = dd2.A.copy()
+    #     rdd.sigma = dd2.sigma.copy()
+    #
+    # rhslds.emission_distns[0]._A = hslds.emission_distns[0]._A.copy()
+    # rhslds.emission_distns[0].scale = hslds.emission_distns[0].scale.copy()
+    # rhslds.emission_distns[0].sigmasq_flat = hslds.emission_distns[0].sigmasq_flat.copy()
+    #
+    # N_samples = 25
+    # rhslds, lls, z_smpls, rdynamics_distns, z_finals, x_finals, sigma_x_finals = fit_rhslds(rhslds)
 
-    rhslds = make_rhslds(N_neurons, datasets, masks, Ts,
-                         z_inits=z_finals, x_inits=x_inits, fixed_scale=False,
-                         trans_distn=trans_distn)
+    # srhslds = make_srhslds(N_neurons, datasets, masks, Ts,
+    #                          z_inits=z_finals, x_inits=x_finals, fixed_scale=False)
+    #
+    # print("initializing transitions")
+    # for _ in range(25):
+    #     srhslds.trans_distn.resample(
+    #         stateseqs=z_finals,
+    #         covseqs=[xf[:-1] for xf in x_finals])
+    # print("done")
+    #
+    # N_samples = 20
+    # srhslds, lls, z_smpls, dynamics_distns, z_finals, x_finals, sigma_x_finals = fit_srhslds(srhslds)
 
-    rhslds, lls, z_smpls, dynamics_distns, z_finals, x_finals, sigma_x_finals = fit_rhslds(rhslds)
+    # srohslds = make_srohslds(N_neurons, datasets, masks, Ts,
+    #                          z_inits=z_finals, x_inits=x_finals, fixed_scale=False)
+    #
+    # print("initializing transitions")
+    # for _ in range(25):
+    #     srohslds.trans_distn.resample(
+    #         stateseqs=z_finals,
+    #         covseqs=[xf[:-1] for xf in x_finals])
+    # print("done")
+    #
+    # N_samples = 20
+    # srohslds, lls, z_smpls, dynamics_distns, z_finals, x_finals, sigma_x_finals = fit_srohslds(srohslds)
 
-    plot_discrete_state_samples(z_smpls[1], z_trues[1])
-    # plot_changepoint_prs(z_smpls[1], z_trues[1], title="Worm 2 Discrete States")
+    # nonconj_rslds = make_nonconj_rslds(N_neurons, datasets, masks, Ts,
+    #                                    z_inits=z_finals, x_inits=x_finals,
+    #                                    C_init=hslds.emission_distns[0]._A)
+    #
+    # nonconj_rslds, vlbs, z_finals, x_finals = fit_nonconj_rslds(nonconj_rslds)
 
-    # for worm in range(N_worms):
-    #     fig = plt.figure(figsize=(2.5,2.5))
-    #     ax = create_axis_at_location(fig, 0.025, 0.025, 2.35, 2.35, projection="3d")
-    #     plot_3d_continuous_states(x_finals[worm], z_finals[worm],
-    #                               ax=ax,
-    #                               title="Worm {} Latent States".format(worm+1),
-    #                               colors=colors, lw=0.5, alpha=0.75, figsize=(3,3),
-    #                               results_dir=results_dir, filename="xs_3d_worm{}.pdf".format(worm))
+    plot_discrete_state_samples(z_smpls[0], z_trues[0])
+    # plot_changepoint_prs(z_smpls[0], z_trues[0], title="Worm 1 Discrete States")
+
+    for worm in range(N_worms):
+        fig = plt.figure(figsize=(2.5,2.5))
+        ax = create_axis_at_location(fig, 0.025, 0.025, 2.35, 2.35, projection="3d")
+        plot_3d_continuous_states(x_finals[worm], z_finals[worm],
+                                  ax=ax,
+                                  title="Worm {} Latent States".format(worm+1),
+                                  colors=colors, lw=0.5, alpha=0.75, figsize=(3,3),
+                                  results_dir=results_dir, filename="xs_3d_worm{}.pdf".format(worm))
 
     # Plot the state dynamics
-    # plot_3d_dynamics(dynamics_distns, np.concatenate(z_finals), np.vstack(x_finals))
+    plot_3d_dynamics(dynamics_distns, np.concatenate(z_finals), np.vstack(x_finals))
 
     # Make 3D animations of worm dynamics
-    # for w in range(N_worms):
-    #     make_dynamics_3d_movie(w, z_finals, x_finals, dynamics_distns)
-
+    for w in range(N_worms):
+        make_dynamics_3d_movie(w, z_finals, x_finals, dynamics_distns)
 
     # neurons_to_plot = ["AVAL", "AVAR", "AVBL", "AVER", "RIML", "RIMR"]
     # for worm in range(N_worms):
@@ -936,7 +1127,6 @@ if __name__ == "__main__":
     #                                   x_finals, sigma_x_finals,
     #                                   Ys_shared, shared_neurons, all_neuron_names,
     #                                   z= z_finals[worm])
-
 
     # plot_neural_embedding(hslds, all_neuron_names)
 
