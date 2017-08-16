@@ -5,10 +5,7 @@ from pyslds.states import _SLDSStatesMaskedData, _SLDSStatesGibbs,\
     _SLDSStatesVBEM, HMMStatesEigen
 
 
-class HierarchicalSLDSStates(_SLDSStatesMaskedData,
-                             _SLDSStatesGibbs,
-                             _SLDSStatesVBEM,
-                             HMMStatesEigen):
+class _HierarchicalSLDSStatesMixin(object):
     """
     Let's try a new approach in which hierarchical states just have a tag
     to indicate which group they come from.  The data will always be a big
@@ -25,7 +22,7 @@ class HierarchicalSLDSStates(_SLDSStatesMaskedData,
 
     def __init__(self, model, group=None, **kwargs):
         self.group = group
-        super(HierarchicalSLDSStates, self).__init__(model, **kwargs)
+        super(_HierarchicalSLDSStatesMixin, self).__init__(model, **kwargs)
 
     ### Override properties with group-specific covariance
     @property
@@ -117,16 +114,24 @@ class HierarchicalSLDSStates(_SLDSStatesMaskedData,
         return data
 
 
+class HierarchicalSLDSStates(_HierarchicalSLDSStatesMixin,
+                             _SLDSStatesMaskedData,
+                             _SLDSStatesGibbs,
+                             _SLDSStatesVBEM,
+                             HMMStatesEigen):
+    pass
+
+
 from rslds.states import SoftmaxRecurrentSLDSStates
-class HierarchicalRecurrentSLDSStates(HierarchicalSLDSStates, SoftmaxRecurrentSLDSStates):
+class HierarchicalRecurrentSLDSStates(_HierarchicalSLDSStatesMixin, SoftmaxRecurrentSLDSStates):
 
-    @property
-    def vbem_info_emission_params(self):
-        J_node, h_node, log_Z_node = \
-            super(HierarchicalRecurrentSLDSStates, self).vbem_info_emission_params
-
-        J_rec, h_rec = self.vbem_info_rec_params
-        return J_node + J_rec, h_node + h_rec, log_Z_node
+    # @property
+    # def vbem_info_emission_params(self):
+    #     J_node, h_node, log_Z_node = \
+    #         super(HierarchicalRecurrentSLDSStates, self).vbem_info_emission_params
+    #
+    #     J_rec, h_rec = self.vbem_info_rec_params
+    #     return J_node + J_rec, h_node + h_rec, log_Z_node
 
     @property
     def vbem_aBl(self):
@@ -135,5 +140,3 @@ class HierarchicalRecurrentSLDSStates(HierarchicalSLDSStates, SoftmaxRecurrentSL
         # Add in node potentials from transitions
         aBl += self._vbem_aBl_rec
         return aBl
-
-

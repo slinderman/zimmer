@@ -8,14 +8,15 @@ npr.seed(0)
 from pybasicbayes.util.text import progprint_xrange
 from pybasicbayes.models import FactorAnalysis
 from pybasicbayes.distributions import \
-    Regression, Gaussian, DiagonalRegression, AutoRegression
+    Regression, Gaussian, AutoRegression
 
 from autoregressive.models import ARWeakLimitStickyHDPHMM
 from pyslds.util import get_empirical_ar_params
 from pylds.util import random_rotation
 
 from pyslds.models import HMMSLDS
-from rslds.models import SoftmaxRecurrentOnlySLDS, SoftmaxRecurrentSLDS
+from zimmer.emissions import HierarchicalDiagonalRegression
+from zimmer.models import HierarchicalRecurrentOnlySLDS, HierarchicalHMMSLDS
 
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
@@ -28,7 +29,8 @@ from rslds.util import cached
 
 ### Global parameters
 T, K, K_true, D_obs, D_latent = 1000, 4, 4, 10, 2
-N_trials = 5
+N_groups = 3
+N_trials_per_group = 1
 mask_start, mask_stop = 0, 0
 N_iters = 1000
 
@@ -132,7 +134,7 @@ def make_figure(true_model, z_true, x_true, y,
 
 
 ### Make an example with 2D latent states and 4 discrete states
-@cached(RESULTS_DIR, "simulated_data")
+# @cached(RESULTS_DIR, "simulated_data")
 def simulate_nascar():
     assert K_true == 4
     As = [random_rotation(D_latent, np.pi/24.),
@@ -179,12 +181,13 @@ def simulate_nascar():
         for _ in range(K)]
 
     C = np.hstack((npr.randn(D_obs, D_latent), np.zeros((D_obs, 1))))
+    R = np.tile(np.logspace(-2, -2 + N_groups, N_groups, endpoint=False)[:,None], (1, D_obs))
     emission_distns = \
-        DiagonalRegression(D_obs, D_latent+1,
-                           A=C, sigmasq=1e-5 *np.ones(D_obs),
-                           alpha_0=2.0, beta_0=2.0)
+        HierarchicalDiagonalRegression(D_obs, D_latent+1, N_groups,
+                                       A=C, sigmasq=R,
+                                       alpha_0=2.0, beta_0=2.0)
 
-    model = SoftmaxRecurrentOnlySLDS(
+    model = HierarchicalRecurrentOnlySLDS(
         trans_params=dict(W=reg_W, b=reg_b),
         init_state_distn='uniform',
         init_dynamics_distns=init_dynamics_distns,
@@ -196,24 +199,32 @@ def simulate_nascar():
     # Sample from the model #
     #########################
     inputs = np.ones((T, 1))
-    (y, x), z = model.generate(T=T, inputs=inputs)
+    groups, ys, xs, zs, masks = [], [], [], [], []
+    for g in range(N_groups):
+        for t in range(N_trials_per_group):
+            y, x, z = model.generate(T=T, inputs=inputs, group=g)
+            groups.append(g)
+            ys.append(y)
+            xs.append(x)
+            zs.append(z)
 
-    # Maks off some data
-    if mask_start == mask_stop:
-        mask = None
-    else:
-        mask = np.ones((T,D_obs), dtype=bool)
-        mask[mask_start:mask_stop] = False
+            # Maks off some data
+            if mask_start == mask_stop:
+                mask = None
+            else:
+                mask = np.ones((T,D_obs), dtype=bool)
+                mask[mask_start:mask_stop] = False
+            masks.append(mask)
 
     # Print the true parameters
     np.set_printoptions(precision=2)
     print("True W:\n{}".format(model.trans_distn.W))
     print("True logpi:\n{}".format(model.trans_distn.logpi))
 
-    return model, inputs, z, x, y, mask
+    return model, inputs, zs, xs, ys, masks, groups
 
 ### Factor Analysis and PCA for dimensionality reduction
-@cached(RESULTS_DIR, "factor_analysis")
+# @cached(RESULTS_DIR, "factor_analysis")
 def fit_factor_analysis(y, mask=None, N_iters=100):
     print("Fitting Factor Analysis")
     model = FactorAnalysis(D_obs, D_latent)
@@ -230,7 +241,7 @@ def fit_factor_analysis(y, mask=None, N_iters=100):
     C_init = np.column_stack((model.W, b))
     return data.Z, C_init
 
-@cached(RESULTS_DIR, "pca")
+# @cached(RESULTS_DIR, "pca")
 def fit_pca(y, whiten=True):
     print("Fitting PCA")
     from sklearn.decomposition import PCA
@@ -248,7 +259,7 @@ def fit_pca(y, whiten=True):
     return x_init, np.column_stack((C_init, b_init))
 
 ### Make an ARHMM for initialization
-@cached(RESULTS_DIR, "arhmm")
+# @cached(RESULTS_DIR, "arhmm")
 def fit_arhmm(x, affine=True):
     print("Fitting Sticky ARHMM")
     dynamics_hypparams = \
@@ -316,36 +327,39 @@ def make_rslds_parameters(C_init):
 
     if C_init is not None:
         emission_distns = \
-            DiagonalRegression(D_obs, D_latent + 1,
-                               A=C_init.copy(), sigmasq=np.ones(D_obs),
-                               alpha_0=2.0, beta_0=2.0)
+            HierarchicalDiagonalRegression(
+                D_obs, D_latent + 1, N_groups,
+                A=C_init.copy(), sigmasq=np.ones((N_groups, D_obs)),
+                alpha_0=2.0, beta_0=2.0)
     else:
         emission_distns = \
-            DiagonalRegression(D_obs, D_latent + 1,
-                               alpha_0=2.0, beta_0=2.0)
+            HierarchicalDiagonalRegression(
+                D_obs, D_latent + 1, N_groups,
+                alpha_0=2.0, beta_0=2.0)
 
     return init_dynamics_distns, dynamics_distns, emission_distns
 
 
-@cached(RESULTS_DIR, "slds")
-def fit_slds(inputs, z_init, x_init, y, mask, C_init,
+# @cached(RESULTS_DIR, "slds")
+def fit_slds(inputs, z_inits, x_inits, ys, masks, groups, C_init,
               N_iters=1000):
     print("Fitting standard SLDS")
     init_dynamics_distns, dynamics_distns, emission_distns = \
         make_rslds_parameters(C_init)
 
-    slds = HMMSLDS(
+    slds = HierarchicalHMMSLDS(
         init_state_distn='uniform',
         init_dynamics_distns=init_dynamics_distns,
         dynamics_distns=dynamics_distns,
         emission_distns=emission_distns,
         alpha=3.)
 
-    slds.add_data(y, inputs=inputs, mask=mask)
+    for z, x, y, mask, group in zip(z_inits, x_inits, ys, masks, groups):
+        slds.add_data(y, inputs=inputs, mask=mask, group=group)
 
-    # Initialize states
-    slds.states_list[0].stateseq = z_init.copy().astype(np.int32)
-    slds.states_list[0].gaussian_states = x_init.copy()
+        # Initialize states
+        slds.states_list[-1].stateseq = z.copy().astype(np.int32)
+        slds.states_list[-1].gaussian_states = x.copy()
 
     # Initialize dynamics
     print("Initializing dynamics with Gibbs sampling")
@@ -358,91 +372,19 @@ def fit_slds(inputs, z_init, x_init, y, mask, C_init,
     for _ in progprint_xrange(N_iters):
         slds.resample_model()
         lps.append(slds.log_likelihood())
-        z_smpls.append(slds.stateseqs[0].copy())
+        z_smpls.append([z.copy() for z in slds.stateseqs])
 
-    x_test = slds.states_list[0].gaussian_states
+    x_test = np.array([s.gaussian_states for s in slds.states_list])
     z_smpls = np.array(z_smpls)
     lps = np.array(lps)
 
     return slds, lps, z_smpls, x_test
 
 
-# @cached(RESULTS_DIR, "rslds_variational")
-def fit_rslds_variational(
-        inputs, y, mask,
-        x_init=None, z_init=None, C_init=None, initialization="none",
-        true_model=None,
-        N_iters=10000):
-
-    print("Fitting rSLDS")
-    init_dynamics_distns, dynamics_distns, emission_distns = \
-        make_rslds_parameters(C_init)
-
-    rslds = SoftmaxRecurrentOnlySLDS(
-        init_state_distn='uniform',
-        init_dynamics_distns=init_dynamics_distns,
-        dynamics_distns=dynamics_distns,
-        emission_distns=emission_distns,
-        fixed_emission=False,
-        alpha=3.)
-
-    # Set the prior precision for the dynamics params
-    rslds.add_data(y, inputs=inputs, mask=mask)
-
-    if initialization == "true":
-        print("Initializing with true model")
-        rslds.emission_distns[0].J_0 = 1e2 * np.eye(D_latent + 1)
-        rslds.trans_distn.W = true_model.trans_distn.W.copy()
-        rslds.trans_distn.b = true_model.trans_distn.b.copy()
-        rslds.trans_distn._initialize_mean_field()
-
-        for rdd, tdd in zip(rslds.dynamics_distns, true_model.dynamics_distns):
-            rdd.A = tdd.A.copy()
-            rdd.sigma = tdd.sigma.copy()
-
-        rslds.emission_distns[0].A = true_model.emission_distns[0].A.copy()
-        rslds.emission_distns[0].sigmasq_flat = true_model.emission_distns[0].sigmasq_flat.copy()
-        rslds.emission_distns[0].J_0 = 1e2 * np.eye(D_latent+1)
-
-        rslds.states_list[0].stateseq = true_model.states_list[0].stateseq.copy()
-        rslds.states_list[0].gaussian_states = true_model.states_list[0].gaussian_states.copy()
-
-    elif initialization == "given":
-        print("Initializing with given states")
-        rslds.emission_distns[0].J_0 = 1e2 * np.eye(D_latent + 1)
-        rslds.states_list[0].stateseq = z_init.astype(np.int32).copy()
-        rslds.states_list[0].gaussian_states = x_init.copy()
-
-    else:
-        print("no initialization")
-
-    rslds._init_mf_from_gibbs()
-
-    # Fit the model
-    vlbs = []
-    z_smpls = [np.argmax(rslds.states_list[0].expected_states, axis=1)]
-    for _ in progprint_xrange(N_iters):
-        vlbs.append(rslds.meanfield_coordinate_descent_step(compute_vlb=True))
-        z_smpls.append(rslds.states_list[0].stateseq.copy())
-
-    x_smpl = rslds.states_list[0].smoothed_mus.copy()
-    z_smpls = np.array(z_smpls)
-    vlbs = np.array(vlbs)
-
-    if true_model is not None:
-        print("True logpi:\n{}".format(true_model.trans_distn.logpi))
-        print("True W:\n{}".format(true_model.trans_distn.W))
-
-    print("Inf logpi:\n{}".format(rslds.trans_distn.logpi))
-    print("Inf W:\n{}".format(rslds.trans_distn.W))
-
-    return rslds, vlbs, z_smpls, x_smpl
-
-
 # @cached(RESULTS_DIR, "rslds_vbem")
 def fit_rslds_vbem(
-        inputs, y, mask,
-        x_init=None, z_init=None, C_init=None, initialization="none",
+        inputs, ys, masks, groups,
+        x_inits=None, z_inits=None, C_init=None, initialization="none",
         true_model=None,
         N_iters=10000):
 
@@ -450,8 +392,7 @@ def fit_rslds_vbem(
     init_dynamics_distns, dynamics_distns, emission_distns = \
         make_rslds_parameters(C_init)
 
-    rslds = SoftmaxRecurrentOnlySLDS(
-    # rslds = SoftmaxRecurrentSLDS(
+    rslds = HierarchicalRecurrentOnlySLDS(
         init_state_distn='uniform',
         init_dynamics_distns=init_dynamics_distns,
         dynamics_distns=dynamics_distns,
@@ -460,7 +401,8 @@ def fit_rslds_vbem(
         alpha=3.)
 
     # Set the prior precision for the dynamics params
-    rslds.add_data(y, inputs=inputs, mask=mask)
+    for y, mask, group in zip(ys, masks, groups):
+        rslds.add_data(y, inputs=inputs, mask=mask, group=group)
 
     if initialization == "true":
         print("Initializing with true model")
@@ -485,9 +427,10 @@ def fit_rslds_vbem(
     elif initialization == "given":
         print("Initializing with given states")
         rslds.emission_distns[0].J_0 = 1e2 * np.eye(D_latent + 1)
-        rslds.states_list[0].stateseq = z_init.astype(np.int32).copy()
-        rslds.states_list[0].gaussian_states = x_init.copy()
-        rslds._init_mf_from_gibbs()
+        for i in range(len(ys)):
+            rslds.states_list[i].stateseq = z_inits[i].astype(np.int32).copy()
+            rslds.states_list[i].gaussian_states = x_inits[i].copy()
+            rslds.states_list[i]._init_vbem_from_gibbs()
         rslds._vb_M_step()
         rslds._vb_E_step()
 
@@ -497,13 +440,14 @@ def fit_rslds_vbem(
 
     # Fit the model
     vlbs = []
-    z_smpls = [rslds.states_list[0].stateseq.copy()]
+    z_smpls = [np.array([z.copy() for z in rslds.stateseqs])]
     for _ in progprint_xrange(N_iters):
         rslds.VBEM_step()
         vlbs.append(rslds.VBEM_ELBO())
-        z_smpls.append(rslds.states_list[0].stateseq.copy())
+        z_smpls.append(np.array([z.copy() for z in rslds.stateseqs]))
+        print(rslds.emission_distns[0].sigmasq_flat)
 
-    x_smpl = rslds.states_list[0].smoothed_mus.copy()
+    x_smpl = np.array([s.smoothed_mus.copy() for s in rslds.states_list])
     z_smpls = np.array(z_smpls)
     vlbs = np.array(vlbs)
 
@@ -518,17 +462,22 @@ def fit_rslds_vbem(
 
 if __name__ == "__main__":
     ## Simulate NASCAR data
-    true_model, inputs, z_true, x_true, y, mask = simulate_nascar()
+    true_model, inputs, z_trues, x_trues, ys, masks, groups = simulate_nascar()
 
     ## Run PCA to get 2D dynamics
-    x_init, C_init = fit_pca(y)
+    x_inits, C_init = fit_pca(np.vstack(ys))
 
     ## Fit an ARHMM for initialization
-    arhmm, z_init = fit_arhmm(x_init)
+    arhmm, z_inits = fit_arhmm(x_inits)
+
+    ## Split the initial states
+    split_inds = np.cumsum([y.shape[0] for y in ys[:-1]])
+    z_inits = np.split(z_inits, split_inds)
+    x_inits = np.split(x_inits, split_inds)
 
     ## Fit a standard SLDS
     slds, slds_lps, slds_z_smpls, slds_x = \
-        fit_slds(inputs, z_init, x_init, y, mask, C_init, N_iters=1000)
+        fit_slds(inputs, z_inits, x_inits, ys, masks, groups, C_init, N_iters=1000)
 
     ## Fit a recurrent SLDS
     # rslds, rslds_lps, rslds_z_smpls, rslds_x = \
@@ -543,8 +492,8 @@ if __name__ == "__main__":
     #                    initialization="true")
 
     rslds, rslds_lps, rslds_z_smpls, rslds_x = \
-        fit_rslds_vbem(inputs, y, mask,
-                       z_init=z_init, x_init=x_init, C_init=C_init,
+        fit_rslds_vbem(inputs, ys, masks, groups,
+                       z_inits=slds_z_smpls[-1], x_inits=slds_x, C_init=C_init,
                        initialization="given",
                        true_model=true_model, N_iters=500)
 
@@ -554,25 +503,24 @@ if __name__ == "__main__":
     #                    N_iters=100)
 
     plot_trajectory_and_probs(
-        rslds_z_smpls[-1][1:], rslds_x[1:],
+        rslds_z_smpls[-1][0][1:], rslds_x[0][1:],
         trans_distn=rslds.trans_distn,
         title="Recurrent SLDS")
 
     plot_all_dynamics(rslds.dynamics_distns)
 
-    plot_z_samples(K, rslds_z_smpls, plt_slice=(0,1000))
+    plot_z_samples(K, [s[0] for s in rslds_z_smpls], plt_slice=(0,1000))
 
     ## Generate from the model
     T_gen = 2000
     inputs = np.ones((T_gen, 1))
-    (rslds_y_gen, rslds_x_gen), rslds_z_gen = rslds.generate(T=T_gen, inputs=inputs)
+    rslds_y_gen, rslds_x_gen, rslds_z_gen = rslds.generate(T=T_gen, inputs=inputs, group=0)
+    slds_y_gen, slds_x_gen, slds_z_gen = slds.generate(T=T_gen, inputs=inputs, group=0)
 
-    slds_y_gen, slds_x_gen, slds_z_gen = slds.generate(T=T_gen, inputs=inputs)
-
-    make_figure(true_model, z_true, x_true, y,
-                rslds, rslds_z_smpls, rslds_x,
+    make_figure(true_model, z_trues[0], x_trues[0], ys[0],
+                rslds, [s[0] for s in rslds_z_smpls], rslds_x[0],
                 rslds_z_gen, rslds_x_gen, rslds_y_gen,
-                slds, slds_z_smpls, slds_x,
+                slds, [s[0] for s in slds_z_smpls], slds_x[0],
                 slds_z_gen, slds_x_gen, slds_y_gen,
                 )
 

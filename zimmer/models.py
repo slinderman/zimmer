@@ -30,6 +30,35 @@ class _HierarchicalSLDSMixin(object):
         groups = [s.group for s in self.states_list]
         self._emission_distn.max_likelihood(stats=stats, groups=groups)
 
+    def VBEM_ELBO(self):
+        # log p(theta)
+        from pyslds.util import gaussian_logprior, regression_logprior
+        elbo = np.sum([gaussian_logprior(id) for id in self.init_dynamics_distns])
+        elbo += np.sum([regression_logprior(dd) for dd in self.dynamics_distns])
+
+        # Handle the hierarchical emission distn log prior
+        # elbo += regression_logprior(self.emission_distns[0])
+        from scipy.stats import multivariate_normal, gamma
+        ed = self._emission_distn
+        A = ed.A
+        J, h = ed.J_0, ed.h_0
+        Sigma = np.linalg.inv(J)
+        mu = Sigma.dot(h)
+
+        for d in range(ed.D_out):
+            elbo += multivariate_normal(mu, Sigma).logpdf(A[d])
+
+        # log p(sigmasq)
+        sigmasq = ed.sigmasq_flat
+        alpha, beta = ed.alpha_0, ed.beta_0
+        for g in range(ed.N_groups):
+            for d in range(ed.D_out):
+                elbo += gamma(alpha, scale=1. / beta).logpdf(1. / sigmasq[g, d])
+
+        # E_q [log p(z, x, y, theta)]
+        elbo += sum(s.vb_elbo() for s in self.states_list)
+        return elbo
+
 
 class HierarchicalHMMSLDS(_HierarchicalSLDSMixin, HMMSLDS):
     pass

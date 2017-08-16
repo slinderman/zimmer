@@ -169,14 +169,12 @@ class HierarchicalDiagonalRegression(DiagonalRegression):
 
             # Sum statistics for this group
             for group, stat in zip(groups, stats):
-                if group != g:
-                    continue
-
-                ysq, yxT, xxT, n = stat
-                alpha += n / 2.0
-                beta += 0.5 * ysq
-                beta += -1.0 * np.sum(yxT * self.A, axis=1)
-                beta += 0.5 * np.sum(AAT * xxT, axis=(1, 2))
+                if group == g:
+                    ysq, yxT, xxT, n = stat
+                    alpha += n / 2.0
+                    beta += 0.5 * ysq
+                    beta += -1.0 * np.sum(yxT * self.A, axis=1)
+                    beta += 0.5 * np.sum(AAT * xxT, axis=(1, 2))
 
             self.sigmasq_flat[g] = beta / (alpha + 1.0)
             assert np.all(self.sigmasq_flat[g] >= 0)
@@ -194,5 +192,3 @@ class HierarchicalDiagonalRegression(DiagonalRegression):
             .dot(np.linalg.cholesky(self.sigma[group]).T)
 
         return np.hstack((x,y)) if return_xy else y
-
-

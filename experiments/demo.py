@@ -3,8 +3,6 @@ import numpy as np
 import numpy.random as npr
 npr.seed(0)
 
-import matplotlib
-# matplotlib.use("macosx")  # might be necessary for animation to work
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
 import seaborn as sns
@@ -118,8 +116,7 @@ dynamics_distns = [Regression(
     for _ in range(2*K)]
 
 emission_distns = HierarchicalDiagonalRegression(
-    D_obs, D_latent + D_input, N_groups,
-    A=true_C, sigmasq=true_Rs)
+    D_obs, D_latent + D_input, N_groups)
 
 model = HierarchicalHMMSLDS(
     init_dynamics_distns=init_dynamics_distns,
@@ -166,8 +163,8 @@ plt.show()
 print("Press Ctrl-C to stop...")
 from itertools import count
 for itr in count():
-    model.resample_model()
-    # model.VBEM_step()
+    # model.resample_model()
+    model.VBEM_step()
 
     samples[itr % n_show] = model.stateseqs[0]
     im.set_array(samples[::-1])
