@@ -1259,7 +1259,7 @@ def plot_recurrent_transitions(trans_distn, xs, zs,
 
 
 
-def plot_duration_histogram(trans_distn, zs,
+def plot_duration_histogram(trans_distn, zs, sim_durs,
                             colors=None,
                             results_dir=None):
 
@@ -1283,12 +1283,27 @@ def plot_duration_histogram(trans_distn, zs,
         dk = durs[states == k]
         dmax = dk.max()
         bins = np.linspace(0, dmax+1, 15)
+        width = (bins[1] - bins[0]) / 2.0
 
         print(len(dk))
 
         plt.figure(figsize=(1.8, 1.8))
-        plt.hist(dk / 3.0, bins/ 3.0, color=colors[k], edgecolor='k', normed=True, label="Empirical")
-        plt.plot(np.arange(1, dmax) / 3.0, g.pmf(np.arange(1, dmax)) * 3.0, '-k', label="Markov")
+
+        # Plot the histogram of inferred transitions
+        tmp, _ = np.histogram(dk, bins, density=True)
+        # plt.bar(bins[:-1] / 3.0, tmp * 3.0, width=width / 3.0,
+        #         color=colors[k], edgecolor='k', label="Empirical")
+        plt.bar(bins[:-1] / 3.0, tmp * 3.0, width=width * 2.0 / 3.0,
+                color=colors[k], alpha=0.75, edgecolor='k', label="Emp")
+
+
+        # Plot the histogram of simulatedtransitions
+        tmp, _ = np.histogram(sim_durs[k], bins, density=True)
+        # plt.bar((bins[:-1] + width) / 3.0, tmp * 3.0, width=width / 3.0,
+        #          color=colors[k], alpha=0.5, edgecolor='k', label="Simulated")
+        plt.plot(bins[:-1] / 3.0, tmp * 3.0, '-k', label="Rec")
+
+        plt.plot(np.arange(1, dmax) / 3.0, g.pmf(np.arange(1, dmax)) * 3.0, ':k', label="Mkv")
         plt.xlabel("duration (s)")
         plt.ylabel("probability")
         plt.legend(loc="upper right", fontsize=6)

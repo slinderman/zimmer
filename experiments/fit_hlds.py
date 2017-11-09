@@ -47,8 +47,12 @@ from pybasicbayes.distributions import Regression, DiagonalRegression
 from pylds.models import MissingDataLDS
 
 # IO
-run_num = 2
-results_dir = os.path.join("results", "2017-11-03-hlds", "run{:03d}".format(run_num))
+# run_num = 2
+# results_dir = os.path.join("results", "2017-11-03-hlds", "run{:03d}".format(run_num))
+# signal = "dff_diff"
+results_dir = os.path.join("results", "2017-11-03-hlds", "run003_dff_bc")
+signal = "dff_bc"
+
 assert os.path.exists(results_dir)
 fig_dir = os.path.join(results_dir, "figures")
 
@@ -77,7 +81,7 @@ def cached(results_name):
     return _cache
 
 
-def load_data(signal="dff_diff", include_unnamed=True):
+def load_data(include_unnamed=True):
     # Load the data
     worm_datas = [WormData(i, name="worm{}".format(i)) for i in range(N_worms)]
 
@@ -306,22 +310,24 @@ def plot_best_model_results(best_model,
             plot_3d_continuous_states(xtrains[i], z_true_trains[i], colors,
                                       figsize=(4, 4),
                                       title="LDS Worm {} States (Zimmer Lables)".format(i + 1),
-                                      results_dir=results_dir,
+                                      results_dir=fig_dir,
                                       filename="xtr_zimmer_{}.pdf".format(i + 1),
-                                      lim=1.5,
+                                      # lim=1.5,
                                       lw=1)
         plt.close("all")
 
+        # for i in range(N_worms):
+        #     plot_3d_continuous_states(xtests[i], z_true_tests[i], colors,
+        #                               figsize=(4, 4),
+        #                               title="LDS Worm {} States (Zimmer Lables)".format(i + 1),
+        #                               results_dir=fig_dir,
+        #                               filename="xte_zimmer_{}.pdf".format(i + 1),
+        #                               lim=1.5,
+        #                               lw=1)
+        # plt.close("all")
+
     if do_plot_x_2d:
-        for i in range(N_worms):
-            plot_3d_continuous_states(xtests[i], z_true_tests[i], colors,
-                                      figsize=(4, 4),
-                                      title="LDS Worm {} States (Zimmer Lables)".format(i + 1),
-                                      results_dir=results_dir,
-                                      filename="xte_zimmer_{}.pdf".format(i + 1),
-                                      lim=1.5,
-                                      lw=1)
-        plt.close("all")
+        pass
 
     if do_plot_sigmasq:
 
@@ -346,7 +352,7 @@ def plot_best_model_results(best_model,
 
         plt.colorbar(im)
         plt.tight_layout()
-        plt.savefig(os.path.join(results_dir, "observation_variance.pdf"))
+        plt.savefig(os.path.join(fig_dir, "observation_variance.pdf"))
 
     if do_plot_similarity:
 
@@ -380,39 +386,39 @@ def plot_best_model_results(best_model,
 
         plt.tight_layout()
 
-        plt.savefig(os.path.join(results_dir, "permuted_similarity.pdf"))
-        plt.savefig(os.path.join(results_dir, "permuted_similarity.png"), dpi=300)
+        plt.savefig(os.path.join(fig_dir, "permuted_similarity.pdf"))
+        plt.savefig(os.path.join(fig_dir, "permuted_similarity.png"), dpi=300)
 
         plt.show()
 
-    if do_plot_cluster_embedding:
-        for cluster in range(N_clusters):
-            fig = plt.figure(figsize=(1.5, 1.5))
-            ax = fig.add_subplot(111, projection="3d")
-            for i in np.where(neuron_clusters == cluster)[0]:
-                ci = C[i]
-                ci /= np.linalg.norm(ci)
-                ax.plot([0, ci[0]],
-                         [0, ci[1]],
-                         [0, ci[2]],
-                         '-k', lw=1)
-                ax.plot([ci[0]],
-                        [ci[1]],
-                        [ci[2]],
-                        'ok', markersize=4)
-                # ax.text(1.1 * ci[0], 1.1 * ci[1], 1.1 * ci[2], neuron_names[i], fontsize=6)
-
-            ax.set_xlabel("$x_1$", labelpad=-10)
-            ax.set_ylabel("$x_2$", labelpad=-10)
-            ax.set_zlabel("$x_3$", labelpad=-10)
-            ax.set_xticklabels([])
-            ax.set_yticklabels([])
-            ax.set_zticklabels([])
-            ax.set_xlim(-.75, .75)
-            ax.set_ylim(-.75, .75)
-            ax.set_zlim(-.75, .75)
-
-        plt.show()
+    # if do_plot_cluster_embedding:
+    #     for cluster in range(N_clusters):
+    #         fig = plt.figure(figsize=(1.5, 1.5))
+    #         ax = fig.add_subplot(111, projection="3d")
+    #         for i in np.where(neuron_clusters == cluster)[0]:
+    #             ci = C[i]
+    #             ci /= np.linalg.norm(ci)
+    #             ax.plot([0, ci[0]],
+    #                      [0, ci[1]],
+    #                      [0, ci[2]],
+    #                      '-k', lw=1)
+    #             ax.plot([ci[0]],
+    #                     [ci[1]],
+    #                     [ci[2]],
+    #                     'ok', markersize=4)
+    #             # ax.text(1.1 * ci[0], 1.1 * ci[1], 1.1 * ci[2], neuron_names[i], fontsize=6)
+    #
+    #         ax.set_xlabel("$x_1$", labelpad=-10)
+    #         ax.set_ylabel("$x_2$", labelpad=-10)
+    #         ax.set_zlabel("$x_3$", labelpad=-10)
+    #         ax.set_xticklabels([])
+    #         ax.set_yticklabels([])
+    #         ax.set_zticklabels([])
+    #         ax.set_xlim(-.75, .75)
+    #         ax.set_ylim(-.75, .75)
+    #         ax.set_zlim(-.75, .75)
+    #
+    #     plt.show()
 
     if do_plot_data:
         all_ys = np.vstack(ys)
@@ -438,16 +444,38 @@ def plot_best_model_results(best_model,
             t = np.arange(n_frames) / 3.0
 
             plt.figure(figsize=(5.5, 7))
-            for d in range(n_plot):
-                if ms[i][0,d]:
-                    plt.plot(t, y[:n_frames, d] / scales[d] + spc * d, '-', color='k', lw=1)
-                else:
-                    plt.plot(t, np.zeros_like(t) + spc * d, ':', color='k', lw=1)
-                plt.plot(t, ysm[:n_frames, d] / scales[d] + spc * d, '-', color=colors[0], lw=1.5)
+            offset = 0
+            ticks = []
+            for c in range(N_clusters):
+                for n in neuron_perm:
+                    if neuron_clusters[n] != c:
+                        continue
 
-            plt.yticks(np.arange(n_plot) * spc, neuron_names, fontsize=6)
-            plt.ylim(n_plot * spc, -spc)
-            plt.ylim(n_plot * spc, -spc)
+                    if ms[i][0, n]:
+                        plt.plot(t, y[:n_frames, n] / scales[n] + spc * offset, '-', color='k', lw=1.5)
+                    else:
+                        plt.plot(t, np.zeros_like(t) + spc * offset, ':', color='k', lw=1)
+                    plt.plot(t, ysm[:n_frames, n] / scales[n] + spc * offset, '-', color=colors[0], lw=1)
+
+                    ticks.append(offset * spc)
+                    offset += 1
+
+                # Add an extra space between clusters
+                offset += 2
+
+            # Remove last space
+            offset -= 2
+
+            # for d,n in enumerate(neuron_perm):
+            #     if ms[i][0, n]:
+            #         plt.plot(t, y[:n_frames, n] / scales[n] + spc * d, '-', color='k', lw=1)
+            #     else:
+            #         plt.plot(t, np.zeros_like(t) + spc * d, ':', color='k', lw=1)
+            #     plt.plot(t, ysm[:n_frames, n] / scales[n] + spc * d, '-', color=colors[0], lw=1.5)
+
+            plt.yticks(ticks, neuron_names[neuron_perm], fontsize=6)
+            plt.ylim(offset * spc, -spc)
+            plt.ylim(offset * spc, -spc)
             plt.xlim(0, t[-1])
             plt.xticks(fontsize=6)
             plt.xlabel("time (s)")
@@ -456,7 +484,7 @@ def plot_best_model_results(best_model,
             plt.tight_layout()
 
             # plt.savefig(os.path.join(results_dir, "y_{}.png".format(i)), dpi=300)
-            plt.savefig(os.path.join(results_dir, "figures", "y_{}.pdf".format(i)))
+            plt.savefig(os.path.join(fig_dir, "y_{}.pdf".format(i)))
 
         plt.close("all")
         # plt.show()
@@ -694,15 +722,15 @@ if __name__ == "__main__":
     # plot_likelihoods(final_lls, hlls, best_index)
     #
     plot_best_model_results(best_model,
-                            do_plot_x_3d=False,
+                            do_plot_x_3d=True,
                             do_plot_x_2d=False,
                             do_plot_sigmasq=False,
                             do_plot_similarity=False,
                             do_plot_cluster_embedding=False,
-                            do_plot_data=True)
+                            do_plot_data=False)
 
     # heldout_neuron_identification()
-
+    #
     # # Save out the results
     # results = dict(
     #     xtrains=xtrains,

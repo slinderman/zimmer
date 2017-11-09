@@ -68,7 +68,7 @@
   multiple worms.  We use this framework to reveal latent states of
   population neural activity, along with the discrete modes of
   behavior that drive dynamics in this latent state space.  We find
-  characeristic transition patterns between these discrete modes, and
+  characteristic transition patterns between these discrete modes, and
   we see that transition probabilities are determined, in part, by the
   current brain state.  This probabilistic framework is a useful aid
   for neural identification, currently a laborious, manual task.
@@ -147,11 +147,11 @@ interpretable sequence of behavioral segments.
 
 The data comes in the form of a collection of matrices~$\{\widetilde{Y}^{(w)}\}_{w=1}^W$
 for each of~$W$ worms.  The matrix~${\widetilde{Y}^{(w)} \in \reals^{T_w \times N_w}}$
-representes the calcium activity of the~$w$-th worm, which consists of~$T_w$
+represents the calcium activity of the~$w$-th worm, which consists of~$T_w$
 time frames and~$N_w$ neurons.\footnote{Technically, this calcium activity is
 a matrix of first-order temporal differences of a
 bleaching-corrected~$\Delta F /F$ signal. Unlike~\citet{kato2015global}, we
-do not smooth these derivates. We work with the raw first-order
+do not smooth these derivatives. We work with the raw first-order
 temporal differences.}  \celegans~is special in that each neuron has a unique
 name.  Assigning names to neurons in calcium imaging data is a challenging
 task, but typically, out of the~${\sim 100}$ neurons observed in any worm,
@@ -339,7 +339,7 @@ transition probabilities.  We replace~\eqref{eq:markov_z} with,
 where~${r_k \in \reals^K}$ and~${R \in \reals^{K \times D}}$
 parameterize a map from previous discrete and continuous states to a
 distribution over next discrete states.  The link function is the
-softmax function, which exponentiates and noramlizes
+softmax function, which exponentiates and normalizes
 the~$K$-dimensional argument~${r_{z_t^{(w)}} + R x_t^{(w)}}$.
 
 \section{Model Fitting}
@@ -401,7 +401,7 @@ log likelihood.
     nats/observation over Gaussian baseline). On the basis of held-out
     test likelihood, we choose the hierarchical LDS with
     10-dimensional latent states.  \textit{(bottom)} Inferred standard
-    deviaion~$\sqrt{s_n^{(w)}}$ for each neuron and worm.  Gray cells
+    deviation~$\sqrt{s_n^{(w)}}$ for each neuron and worm.  Gray cells
     indicate neurons that were not observed in that worm.}
   \label{fig:lds}
 \end{figure}
@@ -432,8 +432,11 @@ colored gray.
     with the hierarchical LDS is shown in blue.  The hierarchical LDS
     makes predictions about unobserved neurons---those with dotted
     black lines---based on the correlations found in other worms. We
-    show only one minute of data and the first 20 neurons
-    (alphabetically) here.}
+    show two minutes of data here.  The neurons have been grouped into
+    five clusters, as discussed below.  Within each cluster, the
+    neurons are sorted alphabetically. Each neuron is individually
+    scaled by the standard deviation of its observed activity to
+    illustrate dynamics of low-amplitude neurons. }
   \label{fig:activity_1}
 \end{figure}
 
@@ -442,10 +445,7 @@ activity~$y$ along with the smoothed activity under the hierarchical
 LDS.  Formally, the blue lines are given by~$C \E[x \given y] +
 d$. Unobserved neurons are shown as dotted black lines.  Though their
 activity is not observed, the hierarchical model can predict it based
-on correlations observed in other neurons. We note that some of the
-highly active neurons (e.g. \textsf{AVFL} and \textsf{AVFR}) are
-largely smoothed out, as the model attributes much of their activity
-to noise. 
+on correlations observed in other worms. 
 
 \begin{figure}[h]
   \centering
@@ -498,7 +498,7 @@ a partial matching.
 
 The rows of the emission matrix~$c_n$ serve as ``embeddings'' of the
 neurons. These embeddings can aid in this matching.  Specifically,
-given an activity trace~$y^{(w)}_{n^*} \in \reals^T$ for an unlabled
+given an activity trace~$y^{(w)}_{n^*} \in \reals^T$ for an unlabeled
 neuron~$n^*$ in worm~$w$, along with the set of continuous latent
 states~$x^{(w)} \in \reals^{T \times D}$ inferred from the labeled
 neurons, we perform a linear regression to
@@ -516,7 +516,7 @@ of likeness.
   this task, we view unlabeled neurons as \emph{candidates} for a
   particular label. For example, suppose we are trying to determine
   the candidate neuron that is most likely to be~\textsf{AVAL}. For
-  this task, we have artifically held-out this label so that we know
+  this task, we have artificially held-out this label so that we know
   which candidates truly is~\textsf{AVAL}. We use the neural
   embeddings~$c_{\mathsf{AVAL}}$, which was inferred from other worms,
   to aid in this matching.  We measure the cosine similarity
@@ -885,7 +885,11 @@ match the states identified in~\citep{kato2015global}.
 Figure~\ref{fig:rec_weights} shows the two terms that go into the
 distribution over next states: the ``Markov'' term~$\{r_{k}\}_{k=1}^K$
 and the ``recurrent'' weights~$R$, as defined in
-Eq.~\eqref{eq:recurrent}. The largest weights come from the
+Eq.~\eqref{eq:recurrent}.  Since the impact of the recurrent weights
+depends on the scale of the continuous latent states, we multiply the
+weight matrix~$R$ by the standard deviation of~$x$ (since~$x$ is
+roughly zero mean, this is like z-scoring~$x$ so that it is comparable
+with the Markov term).  The largest weights come from the
 self-transitions, i.e. the diagonal of the Markov terms. Still, the
 recurrent weights are non-negligible. The histogram of Markov
 weights~($r_{z_t}$) and the recurrent weights~($R^\trans x_t$) at the
@@ -897,7 +901,7 @@ likelihoods, as shown in Figure~\ref{fig:arhmm_lls}.
 
 \clearpage
 
-\subsection{Some state durations are non-Markovian}
+\subsection{The recurrent model captures non-Markovian state durations}
 
 \begin{figure}[h]
 \centering%
@@ -918,27 +922,38 @@ likelihoods, as shown in Figure~\ref{fig:arhmm_lls}.
   are peaked away from zero (e.g. states 2, 4, 6, and 7).  The
   recurrent transition model allows the AR-HMM to capture this
   non-Markovianity by modeling transitions as a function of location
-  in latent state space~$x_t$.}
+  in latent state space~$x_t$. Solid lines show the distribution
+  of simulated durations under the recurrent AR-HMM; dashed lines
+  show the geometric duration distribution under the Markovian model.}
 \label{fig:durations}
 \end{figure}
 
-Figure~\ref{fig:durations} shows histograms of the distribution of inferred
-state distributions for each state.  For comparison, we show
-the geometric distribution of state durations implied by the
-Markov weights as a black line.  Specifically, the distribution
-over durations~$d_k$ of state~$k$ under the Markov model (ignoring the
-recurrent weights) is given by,
+Figure~\ref{fig:durations} shows histograms of the
+empirical distribution of inferred state durations for each state. For
+comparison, the solid lines show the distribution of
+\emph{simulated} state distributions from our recurrent AR-HMM.  We
+see a close correspondence. 
+
+This correspondence is a direct result of the recurrent nature of the
+model.  Without the recurrent terms, the state duration distributions
+would necessarily follow the geometric distribution shown in dotted
+black lines.  These distributions decay monotonically and cannot
+capture the peaks away from zero that we find in the data.  This is
+due to the fact that the distribution over durations~$d_k$ of
+state~$k$ under a Markov model (ignoring the recurrent weights) is
+given by,
 \begin{align*}
   p_{k \to k} &= [\mathrm{softmax}(r_{k})]_k, \\
   d_k &\sim \mathrm{Geom}(1-p_{k \to k}).
 \end{align*}
-We see that some states (e.g. states 1, 5, and 8) seem to follow the
-Markov assumption quite well, whereas others (states 2, 4, and especially 7),
-are far from Markovian.  The recurrent model incorporates the continuous
-latent state~$x_t$ into the transition probabilities via the additive term~$R x_t$
-in the softmax.  It is likely that this term captures the non-Markovianity.
+While some states (e.g. states 1, 5, and 8) seem to follow the Markov
+assumption quite well, others (states 2, 4, and especially 7), are far
+from Markovian.  The recurrent model incorporates the continuous
+latent state~$x_t$ into the transition probabilities via the additive
+term~$R x_t$ in the softmax and thereby captures the non-Markovianity.
 
 \clearpage
+
 
 \subsection{Inferred states overlap with those of~\citet{kato2015global}}
 
@@ -990,7 +1005,7 @@ A few patterns emerge here:
 \item \textsf{REV2} and \textsf{REV1} map primarily onto the pink state.
   This state is characterized by an excursion of activity along cluster
   1 ({\sf AVAL, AVAR, BAGL, RIML, RIMR, SAAVR, SABVL, SABVR, VA01}.
-  The \textsf{AVA*} interneurons innvervate motor neurons.
+  The \textsf{AVA*} interneurons innervate motor neurons.
   \textsf{RIM*} are motor neurons that modulate reversals.
   \textsf{SABV*} are interneurons and sublateral motor neurons.
   \textsf{VA01} is a motor neuron.
@@ -1014,59 +1029,59 @@ A few patterns emerge here:
 
 \clearpage
 
-\subsection{Inferred changepoints also match manual labels}
+% \subsection{Inferred change-points also match manual labels}
 
-\begin{figure}[h]
-\centering%
-\includegraphics[width=5.5in]{figures/arhmm/z_cps_worm0.pdf}
-\includegraphics[width=5.5in]{figures/arhmm/z_cps_worm1.pdf}
-\caption{(top) Posterior distribution over latent states~$z_t$.
-  Each column corresponds to a time bin and sums to one.
-  (middle) The posterior probability of changepoints.
-  (bottom) For reference,
-  the manually labeled states of~\citet{kato2015global}. Colors match those
-  of Figure~\ref{fig:overlap}.}
-\label{fig:z_cps_12}
-\end{figure}
+% \begin{figure}[h]
+% \centering%
+% \includegraphics[width=5.5in]{figures/arhmm/z_cps_worm0.pdf}
+% \includegraphics[width=5.5in]{figures/arhmm/z_cps_worm1.pdf}
+% \caption{(top) Posterior distribution over latent states~$z_t$.
+%   Each column corresponds to a time bin and sums to one.
+%   (middle) The posterior probability of change-points.
+%   (bottom) For reference,
+%   the manually labeled states of~\citet{kato2015global}. Colors match those
+%   of Figure~\ref{fig:overlap}.}
+% \label{fig:z_cps_12}
+% \end{figure}
 
-Figures~\ref{fig:z_cps_12}, \ref{fig:z_cps_34}, and \ref{fig:z_cps_5}
-show the posterior distribution of latent states~$z$ inferred from
-neural activity alone. From this posterior, we also compute the probability
-of a changepoint, where~$z_{t+1} \neq z_t$.  For reference, we show the
-manually labeled states of~\citet{kato2015global} below. Here, patterns
-like the cascade from states 2 to 3 to 4 (red to yellow to green) are
-apparent. 
+% Figures~\ref{fig:z_cps_12}, \ref{fig:z_cps_34}, and \ref{fig:z_cps_5}
+% show the posterior distribution of latent states~$z$ inferred from
+% neural activity alone. From this posterior, we also compute the probability
+% of a change-point, where~$z_{t+1} \neq z_t$.  For reference, we show the
+% manually labeled states of~\citet{kato2015global} below. Here, patterns
+% like the cascade from states 2 to 3 to 4 (red to yellow to green) are
+% apparent. 
 
-\begin{figure}[h]
-\centering%
-\includegraphics[width=5.5in]{figures/arhmm/z_cps_worm2.pdf}
-\includegraphics[width=5.5in]{figures/arhmm/z_cps_worm3.pdf}
-\caption{See Figure~\ref{fig:z_cps_12} caption.}
-\label{fig:z_cps_34}
-\end{figure}
+% \begin{figure}[h]
+% \centering%
+% \includegraphics[width=5.5in]{figures/arhmm/z_cps_worm2.pdf}
+% \includegraphics[width=5.5in]{figures/arhmm/z_cps_worm3.pdf}
+% \caption{See Figure~\ref{fig:z_cps_12} caption.}
+% \label{fig:z_cps_34}
+% \end{figure}
 
-\begin{figure}[h]
-\centering
-\includegraphics[width=5.5in]{figures/arhmm/z_cps_worm4.pdf}
-\caption{See Figure~\ref{fig:z_cps_12} caption.}
-\label{fig:z_cps_5}
-\end{figure}
+% \begin{figure}[h]
+% \centering
+% \includegraphics[width=5.5in]{figures/arhmm/z_cps_worm4.pdf}
+% \caption{See Figure~\ref{fig:z_cps_12} caption.}
+% \label{fig:z_cps_5}
+% \end{figure}
 
-\clearpage
+% \clearpage
 
-\subsection{Inferred states changepoints correspond with changes in dynamics}
+\subsection{Inferred states change-points correspond with changes in dynamics}
 
 Figures~\ref{fig:segmentation_1} through~\ref{fig:segmentation_5} show an
 interval of latent state trajectories~$x$ along with the segmentation from
 the inferred discrete states~$z$ (top).  For comparison, we also show the
 manual segmentation of~\citep{kato2015global} (bottom).  The inferred
-segmentation seems to identify changepoints when one or more of the latent
+segmentation seems to identify change-points when one or more of the latent
 continuous states changes dynamics.  Indeed, this is the assumption of the
 model.  By contrast, the segmentation of~\citep{kato2015global} is based on
 a read-out of a single neuron, and while it is largely consistent with the
 inferred segmentation at the population level, it misses some salient
-changes in dynamics.  For example, see the inferred changepoint around
-time 700 in worm 1.  This changepoint was not identified in the manual
+changes in dynamics.  For example, see the inferred change-point around
+time 700 in worm 1.  This change-point was not identified in the manual
 data.
 
 \begin{figure}[h]

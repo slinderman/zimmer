@@ -59,10 +59,12 @@ from zimmer.plotting import plot_3d_continuous_states, plot_2d_continuous_states
 
 # LDS Results
 lds_dir = os.path.join("results", "2017-11-03-hlds", "run002")
+# lds_dir = os.path.join("results", "2017-11-03-hlds", "run003_dff_bc")
 assert os.path.exists(lds_dir)
 
 # AR-HMM RESULTS
 results_dir = os.path.join("results", "2017-11-04-arhmm", "run003")
+# results_dir = os.path.join("results", "2017-11-04-arhmm", "run004_dff_bc")
 assert os.path.exists(results_dir)
 fig_dir = os.path.join(results_dir, "figures")
 
@@ -71,7 +73,7 @@ fig_dir = os.path.join(results_dir, "figures")
 N_lags = 1
 N_samples = 1000
 N_worms = 5
-T_sim = 10 * 3
+
 
 def cached(results_name):
     def _cache(func):
@@ -285,24 +287,14 @@ def fit_best_model(K=8,
     return best_model, lls, hll
 
 
-def simulate_trajectories(N_trajs=100, N_sims=4, worm=1):
-    # Simulate a canonical trajectory
-    def _simulate_dynamics(dd, x0, T):
-        X = np.zeros((T, dd.D_out))
-        X[0] = x0
-        for t in range(1, T):
-            # xp = np.concatenate((X[t - 1], [1]))
-            xp = X[t-1]
-            X[t] = dd.predict(xp)
-        return X
-
+def simulate_trajectories(N_trajs=100, T_sim=30, N_sims=4, worm=1, min_sim_dur=6):
     from pyhsmm.util.general import rle
     z_finals_rles = [rle(z) for z in z_finals]
 
     x_trajss = []
     x_simss = []
     for k in range(best_model.num_states):
-
+        print("Simulating state ", k)
         x_trajs = []
         for worm in range(N_worms):
             x = xs[worm][N_lags:]
@@ -339,12 +331,15 @@ def simulate_trajectories(N_trajs=100, N_sims=4, worm=1):
                 dur_k = T_sim
 
             # Make sure the simulation is long enough
-            if dur_k < 6:
+            if dur_k < min_sim_dur:
                 continue
 
             # If the simulation passes, keep it
             x_sims.append(x_sim[:dur_k])
             j += 1
+
+            if j % 50 == 0:
+                print("{} / {}".format(j, N_sims))
 
         x_simss.append(x_sims)
 
@@ -363,7 +358,8 @@ def plot_best_model_results(do_plot_expected_states=True,
                             do_plot_recurrent_weights=True,
                             do_plot_x_at_changepoints=True,
                             do_plot_latent_trajectories_vs_time=True,
-                            do_plot_duration_histogram=True):
+                            do_plot_duration_histogram=True,
+                            T_sim=10*3):
     # Plot the expected states and changepoint probabilities
     if do_plot_expected_states:
         for i in range(N_worms):
@@ -463,9 +459,12 @@ def plot_best_model_results(do_plot_expected_states=True,
 
     if do_plot_simulated_trajs:
         for k in range(best_model.num_states):
-        # for k in range(3, 4):
+            long_sims = [x_sim for x_sim in x_simss[k] if x_sim.shape[0] >= 6]
+            stable_sims = [x_sim for x_sim in long_sims if abs(x_sim).max() < 3]
+            inds = np.random.choice(len(stable_sims), size=4, replace=False)
+
             plot_simulated_trajectories2(
-                k, x_trajss[k], x_sims[k], C_clusters, d_clusters, T_sim,
+                k, x_trajss[k], [stable_sims[i] for i in inds], C_clusters, d_clusters, T_sim,
                 lim=3,
                 results_dir=fig_dir)
             plt.close("all")
@@ -504,10 +503,14 @@ def plot_best_model_results(do_plot_expected_states=True,
         plt.show()
 
     if do_plot_duration_histogram:
+        durss = [np.array([x_sim.shape[0] for x_sim in x_sims]) for x_sims in x_simss]
+
         plot_duration_histogram(best_model.trans_distn,
                                 z_finals,
+                                durss,
                                 results_dir=fig_dir)
         plt.close("all")
+
 
 # Using the smoothed states, run each model forward making predictions
 # and see how well the predictions align with the smoothed states
@@ -603,13 +606,15 @@ if __name__ == "__main__":
     print("State usage:")
     print(best_model.state_usages[perm])
 
-    x_trajss, x_sims = simulate_trajectories()
+    # x_trajss, x_simss = simulate_trajectories()
+    sim = cached("simulations")(simulate_trajectories)
+    x_trajss, x_simss = sim(min_sim_dur=0, N_sims=1000, T_sim=100 * 3)
 
     # Plot results
     plot_best_model_results(
         do_plot_expected_states=False,
         do_plot_x_2d=False,
-        do_plot_x_3d=False,
+        do_plot_x_3d=True,
         do_plot_dynamics_3d=False,
         do_plot_dynamics_2d=False,
         do_plot_state_overlap=False,
