@@ -1,8 +1,123 @@
 # Build specific models for joint observations
 import numpy as np
 
-from pyslds.states import _SLDSStatesMaskedData, _SLDSStatesGibbs,\
-    _SLDSStatesVBEM, HMMStatesEigen
+from pybasicbayes.models.factor_analysis import FactorAnalysisStates
+from pylds.states import LDSStatesMissingData
+from pyslds.states import _SLDSStatesMaskedData, _SLDSStatesGibbs, _SLDSStatesVBEM
+from pyhsmm.internals.hmm_states import HMMStatesEigen
+from rslds.states import InputHMMStates
+
+
+class HierarchicalFactorAnalysisStates(FactorAnalysisStates):
+    def __init__(self, model, data, group=0, mask=None):
+        self.group = group
+        super(HierarchicalFactorAnalysisStates, self).__init__(model=model, data=data, mask=mask)
+
+    @property
+    def sigmasq(self):
+        return self.model.regression.sigmasq_flat[self.group]
+
+
+class HierarchicalLDSStates(LDSStatesMissingData):
+    def __init__(self, model, data=None, mask=None, group=None, **kwargs):
+        self.group = group
+        super(HierarchicalLDSStates, self).__init__(model,data=data, mask=mask, **kwargs)
+
+    @property
+    def info_emission_params(self):
+        if self.mask is None:
+            return super(LDSStatesMissingData, self).info_emission_params
+
+        assert self.diagonal_noise
+        return self._info_emission_params_diag
+
+    @property
+    def _info_emission_params_diag(self):
+        C, D = self.C, self.D
+        sigmasq = self.emission_distn.sigmasq_flat[self.group]
+        J_obs = self.mask / sigmasq
+        centered_data = self.data - self.inputs.dot(D.T)
+
+        CCT = np.array([np.outer(cp, cp) for cp in C]). \
+            reshape((self.D_emission, self.D_latent ** 2))
+
+        J_node = np.dot(J_obs, CCT)
+        J_node = J_node.reshape((self.T, self.D_latent, self.D_latent))
+
+        # h_node = y^T R^{-1} C - u^T D^T R^{-1} C
+        h_node = (centered_data * J_obs).dot(C)
+
+        log_Z_node = -self.mask.sum(1) / 2. * np.log(2 * np.pi)
+        log_Z_node -= 1. / 2 * np.sum(self.mask * np.log(sigmasq), axis=1)
+        log_Z_node -= 1. / 2 * np.sum(centered_data ** 2 * J_obs, axis=1)
+
+        return J_node, h_node, log_Z_node
+
+
+class _HierarchicalARHMMStatesMixin(object):
+    def __init__(self, group=None, *args, **kwargs):
+        self.group = group
+        super(_HierarchicalARHMMStatesMixin, self).__init__(*args, **kwargs)
+
+    @property
+    def obs_distns(self):
+        # Assume the model's obs_distns is a list of Hierarchical Regressions
+        return [o.regressions[self.group] for o in self.model.obs_distns]
+
+    def changepoint_probability(self):
+        trans_potential = self.trans_matrix
+        init_potential = self.pi_0
+        likelihood_log_potential = self.aBl
+
+        alphal = self._messages_forwards_log(
+            trans_potential, init_potential,
+            likelihood_log_potential)
+        betal = self._messages_backwards_log(
+            trans_potential, likelihood_log_potential)
+
+        expected_states = alphal + betal
+        expected_states -= expected_states.max(1)[:, None]
+        np.exp(expected_states, out=expected_states)
+        expected_states /= expected_states.sum(1)[:, None]
+
+        Al = np.log(trans_potential)
+        if Al.ndim == 2:
+            Al = Al[None, :, :]
+
+        log_joints = alphal[:-1, :, None] + \
+                     (betal[1:, None, :] + \
+                     likelihood_log_potential[1:, None, :]) + \
+                     Al
+        log_joints -= log_joints.max((1, 2))[:, None, None]
+        joints = np.exp(log_joints)
+        joints /= joints.sum((1, 2))[:, None, None]  # NOTE: renormalizing each isnt really necessary
+
+        K = self.num_states
+        stay_prob = joints[:, np.arange(K), np.arange(K)].sum(axis=1)
+        return 1 - stay_prob
+
+    def filter(self):
+        trans_potential = self.trans_matrix
+        init_potential = self.pi_0
+        likelihood_log_potential = self.aBl
+
+        alphal = self._messages_forwards_log(
+            trans_potential, init_potential,
+            likelihood_log_potential)
+
+        expected_states = alphal
+        expected_states -= expected_states.max(1)[:, None]
+        np.exp(expected_states, out=expected_states)
+        expected_states /= expected_states.sum(1)[:, None]
+        return expected_states
+
+
+class HierarchicalARHMMStates(_HierarchicalARHMMStatesMixin, HMMStatesEigen):
+    pass
+
+
+class HierarchicalRecurrentARHMMStates(_HierarchicalARHMMStatesMixin, InputHMMStates):
+    pass
 
 
 class _HierarchicalSLDSStatesMixin(object):
@@ -22,7 +137,7 @@ class _HierarchicalSLDSStatesMixin(object):
 
     def __init__(self, model, group=None, **kwargs):
         self.group = group
-        super(_HierarchicalSLDSStatesMixin, self).__init__(model, **kwargs)
+        super(_HierarchicalSLDSStatesMixin, self).__init__(model=model, **kwargs)
 
     ### Override properties with group-specific covariance
     @property
@@ -34,6 +149,31 @@ class _HierarchicalSLDSStatesMixin(object):
     def Rinv_set(self):
         return np.concatenate([np.diag(1. / d.sigmasq_flat[self.group])[None, ...]
                                for d in self.emission_distns])
+
+    def heldout_log_likelihood(self, test_mask=None):
+        """
+        Compute the log likelihood of the masked data given the latent
+        discrete and continuous states.
+        """
+        if test_mask is None:
+            # If a test mask is not supplied, use the negation of this object's mask
+            if self.mask is None:
+                return 0
+            else:
+                test_mask = ~self.mask
+
+        xs = np.hstack((self.gaussian_states, self.inputs))
+        if self.single_emission:
+            return self.emission_distns[0].\
+                log_likelihood((xs, self.data), mask=test_mask, group=self.group).sum()
+        else:
+            hll = 0
+            z = self.stateseq
+            for idx, ed in enumerate(self.emission_distns):
+                hll += ed.log_likelihood((xs[z == idx], self.data[z == idx]),
+                                         mask=test_mask[z == idx],
+                                         group=self.group).sum()
+
 
     # Use group specific variances to calculate likelihoods
     @property

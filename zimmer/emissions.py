@@ -3,7 +3,7 @@ More sophisticated emission models than just simple regressions.
 """
 import numpy as np
 
-from pybasicbayes.distributions import DiagonalRegression
+from pybasicbayes.distributions import DiagonalRegression, Regression
 from pybasicbayes.util.stats import sample_gaussian, sample_invgamma
 
 class HierarchicalDiagonalRegression(DiagonalRegression):
@@ -192,3 +192,4 @@ class HierarchicalDiagonalRegression(DiagonalRegression):
             .dot(np.linalg.cholesky(self.sigma[group]).T)
 
         return np.hstack((x,y)) if return_xy else y
+

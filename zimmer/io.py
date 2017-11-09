@@ -71,6 +71,23 @@ class WormData(object):
         self.dff_bc = interp_data(zimmer_data["wbData"]['deltaFOverF_bc'][0, 0])
         self.dff_deriv = interp_data(zimmer_data["wbData"]['deltaFOverF_deriv'][0, 0])
 
+        # Kato et al smoothed the derivative.  Let's just work with the first differences
+        # of the bleaching corrected and normalized dF/F
+        self.dff_bc_zscored = (self.dff_bc - self.dff_bc.mean(0)) / self.dff_bc.std(0)
+        self.dff_diff = np.vstack((np.zeros((1, self.dff_bc_zscored.shape[1])),
+                                   np.diff(self.dff_bc_zscored, axis=0)))
+
+        # # Let's try our hand at our own smoothing of the derivative
+        # from pylds.models import DefaultLDS
+        # lds = DefaultLDS(D_obs=1, D_latent=1,
+        #                  A=np.eye(1), sigma_states=0.01 * np.eye(1),
+        #                  C=np.eye(1), sigma_obs=np.eye(1))
+        #
+        # self.smoothed_diff = np.zeros_like(self.dff_diff)
+        # self.smoothed_y = np.zeros_like(self.dff_bc_zscored)
+        # for n in range(self.dff.shape[1]):
+        #     self.smoothed_diff[:,n] = lds.smooth(self.dff_diff[:, n:n + 1]).ravel()
+        #     self.smoothed_y[:,n] = self.dff_bc_zscored[0,n] + np.cumsum(self.smoothed_diff[:,n])
 
         # Get the state sequence as labeled in Kato et al
         # Interpolate to get at new time points

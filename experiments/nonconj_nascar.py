@@ -341,7 +341,7 @@ def make_rslds_parameters(C_init):
 
 
 # @cached(RESULTS_DIR, "slds")
-def fit_slds(inputs, z_inits, x_inits, ys, masks, groups, C_init,
+def fit_hslds(inputs, z_inits, x_inits, ys, masks, groups, C_init,
               N_iters=1000):
     print("Fitting standard SLDS")
     init_dynamics_distns, dynamics_distns, emission_distns = \
@@ -382,7 +382,7 @@ def fit_slds(inputs, z_inits, x_inits, ys, masks, groups, C_init,
 
 
 # @cached(RESULTS_DIR, "rslds_vbem")
-def fit_rslds_vbem(
+def fit_hrslds_vbem(
         inputs, ys, masks, groups,
         x_inits=None, z_inits=None, C_init=None, initialization="none",
         true_model=None,
@@ -477,7 +477,7 @@ if __name__ == "__main__":
 
     ## Fit a standard SLDS
     slds, slds_lps, slds_z_smpls, slds_x = \
-        fit_slds(inputs, z_inits, x_inits, ys, masks, groups, C_init, N_iters=1000)
+        fit_hslds(inputs, z_inits, x_inits, ys, masks, groups, C_init, N_iters=1000)
 
     ## Fit a recurrent SLDS
     # rslds, rslds_lps, rslds_z_smpls, rslds_x = \
@@ -492,10 +492,10 @@ if __name__ == "__main__":
     #                    initialization="true")
 
     rslds, rslds_lps, rslds_z_smpls, rslds_x = \
-        fit_rslds_vbem(inputs, ys, masks, groups,
-                       z_inits=slds_z_smpls[-1], x_inits=slds_x, C_init=C_init,
-                       initialization="given",
-                       true_model=true_model, N_iters=500)
+        fit_hrslds_vbem(inputs, ys, masks, groups,
+                        z_inits=slds_z_smpls[-1], x_inits=slds_x, C_init=C_init,
+                        initialization="given",
+                        true_model=true_model, N_iters=500)
 
     # rslds, rslds_lps, rslds_z_smpls, rslds_x = \
     #     fit_rslds_vbem(inputs, y, mask,
