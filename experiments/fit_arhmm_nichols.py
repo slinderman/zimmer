@@ -106,6 +106,7 @@ def _fit_model_wrapper(K, alpha=3, gamma=100., kappa=100.,
                        is_hierarchical=True,
                        is_robust=True,
                        is_recurrent=True,
+                       is_driven=True,
                        is_separate_trans=True,
                        use_all_data=False,
                        init_with_kmeans=True):
@@ -124,9 +125,11 @@ def _fit_model_wrapper(K, alpha=3, gamma=100., kappa=100.,
         else:
             model_class = ARWeakLimitStickyHDPHMM
 
+    D_in = D_latent if not is_driven else D_latent + 1
+
     model_kwargs = \
         dict(alpha=alpha, gamma=gamma, kappa=kappa) if not is_recurrent else \
-        dict(alpha=alpha, D_in=D_latent)
+        dict(alpha=alpha, D_in=D_in)
 
     obs_class = \
         AutoRegression if (not is_hierarchical and not is_robust) else \
@@ -145,6 +148,10 @@ def _fit_model_wrapper(K, alpha=3, gamma=100., kappa=100.,
     )
 
     datas = xs if use_all_data else xtrains
+    if is_driven:
+        covs = us if use_all_data else utrains
+    else:
+        covs = [None] * N_worms
 
     if init_with_kmeans:
         # Initialize by clustering the x's (good for recurrent models
@@ -165,6 +172,7 @@ def _fit_model_wrapper(K, alpha=3, gamma=100., kappa=100.,
     # Initialize discrete states with runs
     for i in range(N_worms):
         x = datas[i]
+        u = covs[i]
         z = zs[i][N_lags:]
 
         data_kwargs = {}
@@ -173,7 +181,7 @@ def _fit_model_wrapper(K, alpha=3, gamma=100., kappa=100.,
         if is_separate_trans:
             data_kwargs["trans_group"] = worms_groups_conditions[i][1]
 
-        model.add_data(x, stateseq=z.astype(np.int32), **data_kwargs)
+        model.add_data(x, covariates=u, stateseq=z.astype(np.int32), **data_kwargs)
 
     # Fit the model with Gibbs
     lls = []
@@ -184,8 +192,18 @@ def _fit_model_wrapper(K, alpha=3, gamma=100., kappa=100.,
     # Compute heldout likelihood
     hll = 0
     for i in range(N_worms):
-        data_kwargs = dict(group=i) if is_hierarchical else dict()
-        hll += model.log_likelihood(xtests[i], **data_kwargs)
+        data_kwargs = {}
+        if is_hierarchical:
+            data_kwargs["group"] = i
+        if is_separate_trans:
+            data_kwargs["trans_group"] = worms_groups_conditions[i][1]
+
+        if is_driven:
+            covs = utests[i]
+        else:
+            covs = None
+
+        hll += model.log_likelihood(xtests[i], covariates=covs, **data_kwargs)
 
     return model, np.array(lls), hll, None
 
@@ -281,11 +299,13 @@ def fit_best_model(K=8,
                    is_hierarchical=True,
                    is_robust=True,
                    is_recurrent=True,
+                   is_driven=True,
                    is_separate_trans=True):
-    name = "{}_{}_{}_{}_{}_full".format(
+    name = "{}_{}_{}_{}_{}_{}_full".format(
         "hier" if is_hierarchical else "nohier",
         "rob" if is_robust else "norob",
         "rec" if is_recurrent else "norec",
+        "driven" if is_driven else "passive",
         "septrans" if is_recurrent else "singletrans",
         K
     )
@@ -295,6 +315,7 @@ def fit_best_model(K=8,
                 is_hierarchical=is_hierarchical,
                 is_robust=is_robust,
                 is_recurrent=is_recurrent,
+                is_driven=is_driven,
                 is_separate_trans=is_separate_trans,
                 use_all_data=True,
                 init_with_kmeans=True))
@@ -558,6 +579,9 @@ if __name__ == "__main__":
     xtrains = lds_results['xtrains']
     xtests = lds_results['xtests']
     xs = [np.vstack((xtr, xte)) for xtr, xte in zip(xtrains, xtests)]
+    utrains = lds_results['utrains']
+    utests = lds_results['utests']
+    us = [np.concatenate((utr, ute)) for utr, ute in zip(utrains, utests)]
 
     z_true_trains = lds_results['z_true_trains']
     z_true_tests = lds_results['z_true_tests']
@@ -604,6 +628,7 @@ if __name__ == "__main__":
                        is_hierarchical=True,
                        is_recurrent=True,
                        is_robust=True,
+                       is_driven=True,
                        is_separate_trans=True)
 
     # Compute the expected states
