@@ -151,7 +151,6 @@ class HierarchicalAutoRegression(_HierarchicalAutoRegressionMixin):
 
         for u in used:
             A_i, U, V = self.regressions[u].A, self.regressions[u].sigma, self.K_0
-
             # vec(Au) ~ N(vec(A), kron(U, V)
             # vectorize rasters across rows and down (i.e. in C order)
             # so the first p entries of vec(A) are the first row of A

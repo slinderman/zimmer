@@ -58,7 +58,7 @@ from rslds.rslds import RecurrentSLDS
 from rslds.nonconj_rslds import SoftmaxRecurrentOnlySLDS
 from rslds.util import compute_psi_cmoments
 
-from zimmer.io import WormData, N_worms, find_shared_neurons, load_key
+from zimmer.io import WormData, N_worms, find_shared_neurons, load_kato_key
 from zimmer.util import states_to_changepoints
 
 ### Global parameters
@@ -105,7 +105,7 @@ def load_data():
     perm_z_true, newlabels = relabel_by_usage(z_true, return_mapping=True)
 
     # Get the key
-    z_key = load_key()
+    z_key = load_kato_key()
     perm_z_key = [z_key[i] for i in np.argsort(newlabels)]
 
     # Get the names of the neurons

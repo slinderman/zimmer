@@ -38,7 +38,7 @@ cmap = gradient_cmap(colors)
 from pyhsmm.util.general import relabel_by_usage
 
 # Load worm modeling specific stuff
-from zimmer.io import WormData, load_key
+from zimmer.io import WormData, load_kato_key
 
 from zimmer.models import HierarchicalLDS
 from zimmer.emissions import HierarchicalDiagonalRegression
@@ -90,7 +90,7 @@ def load_data(include_unnamed=True):
     z_trues, newlabels = relabel_by_usage(z_trues, return_mapping=True)
 
     # Get the key
-    z_key = load_key()
+    z_key = load_kato_key()
     z_key = [z_key[i] for i in np.argsort(newlabels)]
 
     # Get the names of the neurons

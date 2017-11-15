@@ -48,7 +48,7 @@ from pyslds.util import get_empirical_ar_params
 
 import zimmer.io
 importlib.reload(zimmer.io)
-from zimmer.io import WormData, N_worms, find_shared_neurons, load_key
+from zimmer.io import WormData, N_worms, find_shared_neurons, load_kato_key
 
 import zimmer.states
 importlib.reload(zimmer.states)
@@ -117,7 +117,7 @@ def load_data():
     perm_z_true, newlabels = relabel_by_usage(z_true, return_mapping=True)
 
     # Get the key
-    z_key = load_key()
+    z_key = load_kato_key()
     perm_z_key = [z_key[i] for i in np.argsort(newlabels)]
 
     # Get the names of the neurons

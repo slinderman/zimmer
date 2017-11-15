@@ -712,13 +712,17 @@ def plot_state_overlap(z_finals, z_trues,
     from scipy.optimize import linear_sum_assignment
     _, perm = linear_sum_assignment(-overlap)
 
+    # Add any unused inferred states
+    if Kmax > K_zimmer:
+        unused = np.array(list(set(np.arange(Kmax)) - set(perm)))
+        perm = np.concatenate((perm, unused))
 
     # Compare zimmer labels to inferred labels
     for worm, (z_true, z_inf) in enumerate(zip(z_trues, z_finals)):
-        overlap = np.zeros((K_zimmer, Kmax), dtype=float)
+        overlap = np.ones((K_zimmer, Kmax), dtype=float)
         for k1 in range(K_zimmer):
             for k2 in range(Kmax):
-                overlap[k1, k2] = np.sum((z_true == k1) & (z_inf == k2))
+                overlap[k1, k2] += np.sum((z_true == k1) & (z_inf == k2))
 
         # Normalize the rows
         overlap /= overlap.sum(1)[:, None]
@@ -755,6 +759,8 @@ def plot_state_overlap(z_finals, z_trues,
 
         if results_dir is not None:
             plt.savefig(os.path.join(results_dir, "overlap_{}.pdf".format(worm)))
+
+        plt.close("all")
 
 
 def plot_state_usage_by_worm(z_finals,
@@ -817,14 +823,14 @@ def plot_state_usage_by_worm_matrix(z_finals,
     sns.set_context("paper")
 
     fig = plt.figure(figsize=(3, 2))
-    ax = fig.add_subplot(111)
-    im = ax.imshow(usage, cmap="Greys")
-    ax.set_xlabel("State")
-    ax.set_xticks(np.arange(Kmax))
-    ax.set_xticklabels(np.arange(Kmax) + 1)
-    ax.set_ylabel("Worm")
-    ax.set_yticks(np.arange(N_worms))
-    ax.set_yticklabels(np.arange(N_worms)+1)
+    ax = fig.add_subplot(111, aspect="auto")
+    im = ax.imshow(usage.T, cmap="Greys")
+    ax.set_ylabel("State")
+    ax.set_yticks([0, Kmax-1])
+    ax.set_yticklabels((ax.get_yticks() + 1).astype(int))
+    ax.set_xlabel("Worm")
+    # ax.set_xticks(np.arange(N_worms))
+    ax.set_xticklabels((ax.get_xticks() + 1).astype(int))
     plt.title("State usage by worm")
 
     divider = make_axes_locatable(ax)

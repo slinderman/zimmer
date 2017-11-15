@@ -120,6 +120,27 @@ class HierarchicalRecurrentARHMMStates(_HierarchicalARHMMStatesMixin, InputHMMSt
     pass
 
 
+class HierarchicalRecurrentARHMMSeparateTransStates(_HierarchicalARHMMStatesMixin, InputHMMStates):
+    def __init__(self, trans_group, **kwargs):
+        assert not isinstance(trans_group, np.ndarray)
+        self.trans_group = trans_group
+        self._kwargs = dict(self._kwargs, trans_group=trans_group)
+
+        super(HierarchicalRecurrentARHMMSeparateTransStates, self).__init__(**kwargs)
+
+        # access these to be sure they're instantiated
+        self.trans_matrix
+        self.pi_0
+
+    @property
+    def trans_matrix(self):
+        return self.model.trans_distns[self.trans_group].get_trans_matrices(self.covariates)
+
+    @property
+    def pi_0(self):
+        return self.model.init_state_distns[self.trans_group].pi_0
+
+
 class _HierarchicalSLDSStatesMixin(object):
     """
     Let's try a new approach in which hierarchical states just have a tag

@@ -1,12 +1,13 @@
 import numpy as np
+from future.utils import iteritems
 
 from zimmer.emissions import HierarchicalDiagonalRegression
 from zimmer.dynamics import _HierarchicalAutoRegressionMixin
 from zimmer.states import HierarchicalFactorAnalysisStates, HierarchicalSLDSStates, \
     HierarchicalRecurrentSLDSStates, HierarchicalLDSStates, HierarchicalARHMMStates, \
-    HierarchicalRecurrentARHMMStates
+    HierarchicalRecurrentARHMMStates, HierarchicalRecurrentARHMMSeparateTransStates
 from pybasicbayes.models.factor_analysis import FactorAnalysis
-from pyhsmm.models import _HMMGibbsSampling
+from pyhsmm.models import _HMMGibbsSampling, _SeparateTransMixin
 from pylds.models import MissingDataLDS
 from autoregressive.models import ARWeakLimitStickyHDPHMM, ARHMM
 from pyslds.models import HMMSLDS, WeakLimitStickyHDPHMMSLDS
@@ -139,6 +140,27 @@ class HierarchicalRecurrentARHMM(_HierarchicalARHMMMixin, _RecurrentARHMMMixin, 
         return xs, zs
 
 
+class HierarchicalRecurrentARHMMSeparateTrans(_SeparateTransMixin, HierarchicalRecurrentARHMM):
+    """
+    SeparateTrans mixin allows each state to have a 'group_id' associated with it.
+    Each group gets its own transition object.  We need to update this a bit though
+    since the trans distributions take both stateseqs and covseqs.
+    """
+    _states_class = HierarchicalRecurrentARHMMSeparateTransStates
+    def resample_trans_distn(self):
+        for trans_group, trans_distn in iteritems(self.trans_distns):
+            group_states = [s for s in self.states_list if hash(s.trans_group) == hash(trans_group)]
+            trans_distn.resample(
+                stateseqs=[s.stateseq for s in group_states],
+                covseqs=[s.covariates for s in group_states]
+            )
+        self._clear_caches()
+
+    def resample_init_state_distn(self):
+        for trans_group, init_state_distn in iteritems(self.init_state_distns):
+            init_state_distn.resample([s.stateseq[0] for s in self.states_list
+                if hash(s.trans_group) == hash(trans_group)])
+        self._clear_caches()
 
 
 class _HierarchicalSLDSMixin(object):
