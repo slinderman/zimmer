@@ -1387,6 +1387,77 @@ def plot_x_at_changepoints(zs, xs, window=9, colors=None,
             plt.savefig(os.path.join(results_dir, basename + "_{}.pdf".format(k)))
 
 
+def plot_driven_transition_matrices(u_values,
+                                    trans_distns,
+                                    z_finals,
+                                    colors=None,
+                                    results_dir=None):
+    colors = default_colors if colors is None else colors
+    N_trans = len(trans_distns)
+    N_cov = trans_distns[0].W.shape[0]
+
+    perm = _permute_feedforward(z_finals)
+
+    def _plot_delta_transition_matrix(ax, dP, colors, cmap, lim=None, plot_colorbar=False):
+
+        K = dP.shape[0]
+
+        lim = np.max(abs(dP)) if lim is None else lim
+        print(lim)
+        im = ax.imshow(dP, interpolation="nearest", cmap="RdBu_r", vmin=-lim, vmax=lim)
+        ax.set_xticks([])
+        ax.set_yticks([])
+
+        divider = make_axes_locatable(ax)
+        lax = divider.append_axes("left", size="5%", pad=0.01)
+        lax.imshow(np.arange(K)[perm][:, None], cmap=cmap, vmin=0, vmax=len(colors) - 1, aspect="auto",
+                   interpolation="nearest")
+        lax.set_xticks([])
+        lax.set_yticks([])
+
+        bax = divider.append_axes("bottom", size="5%", pad=0.01)
+        bax.imshow(np.arange(K)[perm][None, :], cmap=cmap, vmin=0, vmax=len(colors) - 1, aspect="auto",
+                   interpolation="nearest")
+        bax.set_xticks([])
+        bax.set_yticks([])
+
+        if plot_colorbar:
+            cax = divider.append_axes("right", size="5%", pad=0.05)
+            plt.colorbar(im, cax=cax)
+
+    fig = plt.figure(figsize=(5.5, 2))
+    for i in range(N_trans):
+        ax = fig.add_subplot(1, N_trans, i + 1)
+        trans_matrix0 = trans_distns[i].get_trans_matrices(
+            [np.concatenate((np.zeros(N_cov-1), [u_values[0]]))])[0]
+        trans_matrix1 = trans_distns[i].get_trans_matrices(
+            [np.concatenate((np.zeros(N_cov - 1), [u_values[1]]))])[0]
+        delta_trans_matrix = trans_matrix1 - trans_matrix0
+        _plot_delta_transition_matrix(ax, delta_trans_matrix,
+                                      lim=0.08,
+                                      colors=colors,
+                                      cmap=gradient_cmap(colors),
+                                      plot_colorbar=(i==N_trans-1))
+        ax.set_title("Cond. {} ({} - {})".format(i + 1, u_values[1], u_values[0]))
+        ax.set_xlabel("$z_{t+1}$", labelpad=10)
+        if i == 0:
+            ax.set_ylabel("$z_t$", labelpad=10)
+
+        # ax = fig.add_subplot(2, N_trans, N_trans + i + 1)
+        # trans_matrix = trans_distns[i].get_trans_matrices(
+        #     [np.concatenate((np.zeros(N_cov - 1), [u_values[1]]))])[0]
+        # _plot_transition_matrix(ax, trans_matrix, colors=colors, cmap=gradient_cmap(colors), vmax=1)
+        # ax.set_title("Cond. {} (Input={})".format(i + 1, u_values[1]))
+        # ax.set_xlabel("$z_{t+1}$", labelpad=10)
+        # if i == 0:
+        #     ax.set_ylabel("$z_t$", labelpad=10)
+
+    plt.tight_layout(pad=0.5)
+
+    if results_dir is not None:
+        plt.savefig(os.path.join(results_dir, "driven_trans_matrices.pdf"))
+
+
 def make_states_3d_movie(z_finals, x_finals, title=None, lim=None,
                          colors=None,
                          filepath=None):

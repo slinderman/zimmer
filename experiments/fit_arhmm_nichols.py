@@ -56,7 +56,7 @@ from zimmer.plotting import plot_3d_continuous_states, plot_2d_continuous_states
     plot_3d_dynamics, plot_2d_dynamics, plot_state_overlap, plot_state_usage_by_worm, plot_all_transition_matrices, \
     plot_simulated_trajectories, make_state_predictions_3d_movie, plot_simulated_trajectories2, \
     plot_recurrent_transitions, plot_x_at_changepoints, plot_latent_trajectories_vs_time, \
-    plot_state_usage_by_worm_matrix, plot_duration_histogram
+    plot_state_usage_by_worm_matrix, plot_duration_histogram, plot_driven_transition_matrices
 
 # LDS Results
 lds_dir = os.path.join("results", "nichols", "2017-11-13-hlds", "run001")
@@ -252,8 +252,8 @@ def plot_likelihoods(Ks, final_lls, hlls, best_index,
 
 def fit_all_models(Ks=np.arange(4, 21, 2)):
     axs = None
-    for index, (is_hierarchical, is_robust, is_recurrent) in \
-            enumerate(it.product(*([(True, False)] * 3))):
+    for index, (is_hierarchical, is_robust, is_recurrent, is_driven) in \
+            enumerate(it.product(*([(True, False)] * 4))):
 
         models = []
         llss = []
@@ -261,10 +261,11 @@ def fit_all_models(Ks=np.arange(4, 21, 2)):
         z_smplss = []
 
         for K in Ks:
-            name = "{}_{}_{}_{}".format(
+            name = "{}_{}_{}_{}_{}".format(
                 "hier" if is_hierarchical else "nohier",
                 "rob" if is_robust else "norob",
                 "rec" if is_recurrent else "norec",
+                "drv" if is_driven else "pas",
                 K
             )
             print("Fitting model: {}".format(name))
@@ -396,6 +397,7 @@ def plot_best_model_results(do_plot_expected_states=True,
                             do_plot_x_at_changepoints=True,
                             do_plot_latent_trajectories_vs_time=True,
                             do_plot_duration_histogram=True,
+                            do_plot_driven_trans_matrices=True,
                             T_sim=10*3):
     # Plot the expected states and changepoint probabilities
     if do_plot_expected_states:
@@ -548,6 +550,10 @@ def plot_best_model_results(do_plot_expected_states=True,
                                 results_dir=fig_dir)
         plt.close("all")
 
+    if do_plot_driven_trans_matrices:
+        plot_driven_transition_matrices([10, 21], best_model.trans_distns, z_finals,
+                                        results_dir=fig_dir)
+
 
 # Using the smoothed states, run each model forward making predictions
 # and see how well the predictions align with the smoothed states
@@ -583,6 +589,15 @@ if __name__ == "__main__":
     utests = lds_results['utests']
     us = [np.concatenate((utr, ute)) for utr, ute in zip(utrains, utests)]
 
+    # Standardize the inputs
+    umean = np.mean(np.concatenate(us))
+    ustd = np.std(np.concatenate(us))
+    standardize_all = lambda uu: [(u-umean)/ustd for u in uu]
+    utrains = standardize_all(utrains)
+    utests = standardize_all(utests)
+    us = standardize_all(us)
+
+    # Get the "true" states
     z_true_trains = lds_results['z_true_trains']
     z_true_tests = lds_results['z_true_tests']
     z_trues = [np.concatenate((ztr, zte)) for ztr, zte in zip(z_true_trains, z_true_tests)]
@@ -599,8 +614,6 @@ if __name__ == "__main__":
     C_norm = C[:, :-1] / np.linalg.norm(C[:, :-1], axis=1)[:, None]
     C_clusters = np.array([C[neuron_clusters == c].mean(0) for c in range(N_clusters)])
     d_clusters = np.array([d[neuron_clusters == c].mean(0) for c in range(N_clusters)])
-
-
 
     # Set the AR-HMM hyperparameters
     ar_params = dict(nu_0=D_latent + 2,
@@ -619,8 +632,8 @@ if __name__ == "__main__":
                           etasq=0.01,
                           affine=True)
 
-    # Ks = np.arange(4, 21, 2)
-    # fit_all_models(Ks)
+    Ks = np.arange(4, 11, 2)
+    fit_all_models(Ks)
 
     # Fit the best model
     best_model, lls, hll =\
@@ -666,7 +679,8 @@ if __name__ == "__main__":
         do_plot_recurrent_weights=False,
         do_plot_x_at_changepoints=False,
         do_plot_latent_trajectories_vs_time=False,
-        do_plot_duration_histogram=True
+        do_plot_duration_histogram=False,
+        do_plot_driven_trans_matrices=True
     )
 
     # Rolling predictions
