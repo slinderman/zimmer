@@ -695,11 +695,15 @@ def plot_state_overlap(z_finals, z_trues,
                        z_key=None,
                        colors=None,
                        z_colors=None,
+                       filename=None,
+                       titles=None,
                        results_dir=None):
     colors = default_colors if colors is None else colors
     z_colors = default_colors if z_colors is None else z_colors
     Kmax = np.max(np.concatenate(z_finals)) + 1
     K_zimmer = np.concatenate(z_trues).max() + 1
+    titles = ["State Overlap (Worm {})".format(i+1) for i in range(len(z_trues))] \
+      if titles is None else titles
 
     # Use the Hungarian algorithm to find a permutation of states that
     # yields the highest overlap
@@ -728,8 +732,8 @@ def plot_state_overlap(z_finals, z_trues,
         overlap /= overlap.sum(1)[:, None]
 
         fig = plt.figure(figsize=(2., 2))
-        ax1 = create_axis_at_location(fig, .6, .5, 1., 1)
-        im = ax1.imshow(overlap[:, perm], vmin=0, vmax=.75, interpolation="nearest", aspect="auto")
+        ax1 = create_axis_at_location(fig, .5, .5, 1., 1)
+        im = ax1.imshow(overlap[:, perm], vmin=0, vmax=1.0, cmap="Greys", interpolation="nearest", aspect="auto")
         ax1.set_xticks([])
         if z_key is None:
             ax1.set_yticks([])
@@ -737,9 +741,9 @@ def plot_state_overlap(z_finals, z_trues,
             ax1.set_yticks(np.arange(K_zimmer))
             ax1.set_yticklabels(z_key, fontdict=dict(size=6))
             ax1.tick_params(axis='y', which='major', pad=11)
-        ax1.set_title("State Overlap (Worm {})".format(worm + 1))
+        ax1.set_title(titles[worm])
 
-        lax = create_axis_at_location(fig, .5, .5, .06, 1)
+        lax = create_axis_at_location(fig, .4, .5, .06, 1)
         lax.imshow(np.arange(K_zimmer)[:, None], cmap=gradient_cmap(z_colors[:K_zimmer]), interpolation="nearest",
                    aspect="auto")
         lax.set_xticks([])
@@ -748,17 +752,18 @@ def plot_state_overlap(z_finals, z_trues,
         if z_key is None:
             lax.set_ylabel("Zimmer State", fontsize=8)
 
-        bax = create_axis_at_location(fig, .6, .4, 1., .06)
+        bax = create_axis_at_location(fig, .5, .4, 1., .06)
         bax.imshow(np.arange(Kmax)[perm][None, :], cmap=gradient_cmap(colors[:Kmax]), interpolation="nearest", aspect="auto")
         bax.set_xticks([])
         bax.set_yticks([])
         bax.set_xlabel("Inferred State", fontsize=8)
 
-        axcb = create_axis_at_location(fig, 1.65, .5, .1, 1)
+        axcb = create_axis_at_location(fig, 1.55, .5, .1, 1)
         plt.colorbar(im, cax=axcb)
 
         if results_dir is not None:
-            plt.savefig(os.path.join(results_dir, "overlap_{}.pdf".format(worm)))
+            filename = "overlap_{}.pdf".format(worm) if filename is None else filename
+            plt.savefig(os.path.join(results_dir, filename))
 
         plt.close("all")
 
@@ -1391,19 +1396,24 @@ def plot_driven_transition_matrices(u_values,
                                     trans_distns,
                                     z_finals,
                                     colors=None,
-                                    results_dir=None):
+                                    results_dir=None,
+                                    condition_names=None):
     colors = default_colors if colors is None else colors
     N_trans = len(trans_distns)
     N_cov = trans_distns[0].W.shape[0]
+    condition_names = ["Cond {} ({} - {})".format(i+1, u_values[1] - u_values[0]) for i in range(N_trans)] \
+      if condition_names is None else condition_names
 
     perm = _permute_feedforward(z_finals)
+
+    gs = gridspec.GridSpec(1, 4, width_ratios=[1, 1, 1, 1.09])
 
     def _plot_delta_transition_matrix(ax, dP, colors, cmap, lim=None, plot_colorbar=False):
 
         K = dP.shape[0]
 
         lim = np.max(abs(dP)) if lim is None else lim
-        print(lim)
+        print(lim, np.max(abs(dP)))
         im = ax.imshow(dP, interpolation="nearest", cmap="RdBu_r", vmin=-lim, vmax=lim)
         ax.set_xticks([])
         ax.set_yticks([])
@@ -1425,20 +1435,31 @@ def plot_driven_transition_matrices(u_values,
             cax = divider.append_axes("right", size="5%", pad=0.05)
             plt.colorbar(im, cax=cax)
 
+    # Get plotting limits
+    lim = 0
+    for i in range(N_trans):
+        trans_matrix0 = trans_distns[i].get_trans_matrices(
+            [np.concatenate((np.zeros(N_cov-1), [u_values[0]]))])[0]
+        trans_matrix1 = trans_distns[i].get_trans_matrices(
+            [np.concatenate((np.zeros(N_cov - 1), [u_values[1]]))])[0]
+        delta_trans_matrix = trans_matrix1 - trans_matrix0
+        limi = abs(delta_trans_matrix).max()
+        lim = max(lim, limi)
+
     fig = plt.figure(figsize=(5.5, 2))
     for i in range(N_trans):
-        ax = fig.add_subplot(1, N_trans, i + 1)
+        ax = fig.add_subplot(gs[0,i])
         trans_matrix0 = trans_distns[i].get_trans_matrices(
             [np.concatenate((np.zeros(N_cov-1), [u_values[0]]))])[0]
         trans_matrix1 = trans_distns[i].get_trans_matrices(
             [np.concatenate((np.zeros(N_cov - 1), [u_values[1]]))])[0]
         delta_trans_matrix = trans_matrix1 - trans_matrix0
         _plot_delta_transition_matrix(ax, delta_trans_matrix,
-                                      lim=0.08,
+                                      lim=lim,
                                       colors=colors,
                                       cmap=gradient_cmap(colors),
                                       plot_colorbar=(i==N_trans-1))
-        ax.set_title("Cond. {} ({} - {})".format(i + 1, u_values[1], u_values[0]))
+        ax.set_title(condition_names[i])
         ax.set_xlabel("$z_{t+1}$", labelpad=10)
         if i == 0:
             ax.set_ylabel("$z_t$", labelpad=10)
@@ -1452,10 +1473,70 @@ def plot_driven_transition_matrices(u_values,
         # if i == 0:
         #     ax.set_ylabel("$z_t$", labelpad=10)
 
-    plt.tight_layout(pad=0.5)
+    plt.tight_layout(pad=0.5, rect=(0,0,1,0.9))
+    fig.suptitle("Transition Matrices Modulated by O2 level (21% - 10%)")
 
     if results_dir is not None:
         plt.savefig(os.path.join(results_dir, "driven_trans_matrices.pdf"))
+
+
+def plot_driven_transition_mod(u_values,
+                               trans_distns,
+                               colors=None,
+                               perm=None,
+                               results_dir=None,
+                               condition_names=None):
+    colors = default_colors if colors is None else colors
+    N_trans = len(trans_distns)
+    K = trans_distns[0].num_states
+    perm = np.arange(K) if perm is None else perm
+    condition_names = ["Cond {} ({} - {})".format(i+1, u_values[1] - u_values[0]) for i in range(N_trans)] \
+      if condition_names is None else condition_names
+
+    gs = gridspec.GridSpec(1, 4, width_ratios=[1, 1, 1, 1.])
+
+    # Get the differential effect of O2 = 21% - O2 = 10%
+    lim = 0
+    effects = []
+    for i in range(N_trans):
+        w = trans_distns[i].W[-1][perm]
+        effects.append(w * (u_values[1] - u_values[0]))
+        lim = max(lim, abs(effects[-1]).max())
+
+    # Get plotting limits
+    
+    fig = plt.figure(figsize=(5.5, 2))
+    for i in range(N_trans):
+        ax = fig.add_subplot(gs[0,i])
+        eff = effects[i]
+        for k in range(K):
+            ax.bar(k, eff[k], width=0.8, color=colors[k])
+        ax.plot([-0.5, K-0.5], [0, 0], '-k', lw=1)
+        ax.set_title(condition_names[i])
+        # ax.set_xlabel("$z_{t+1}$", labelpad=10)
+        ax.set_xticks([])
+        if i == 0:
+          ax.set_ylabel("log effect")
+        ax.set_ylim(-1.1 * lim, 1.1 * lim)
+
+        ax.spines["top"].set_visible(False)
+        ax.spines["bottom"].set_visible(False)
+        ax.spines["right"].set_visible(False)
+        # ax = fig.add_subplot(2, N_trans, N_trans + i + 1)
+        # trans_matrix = trans_distns[i].get_trans_matrices(
+        #     [np.concatenate((np.zeros(N_cov - 1), [u_values[1]]))])[0]
+        # _plot_transition_matrix(ax, trans_matrix, colors=colors, cmap=gradient_cmap(colors), vmax=1)
+        # ax.set_title("Cond. {} (Input={})".format(i + 1, u_values[1]))
+        # ax.set_xlabel("$z_{t+1}$", labelpad=10)
+        # if i == 0:
+        #     ax.set_ylabel("$z_t$", labelpad=10)
+
+    plt.tight_layout(pad=0.5, rect=(0,0,1,0.9))
+    fig.suptitle("Effects O2 level (21% - 10%)")
+
+    if results_dir is not None:
+        plt.savefig(os.path.join(results_dir, "driven_trans_matrices_mod.pdf"))
+        plt.savefig(os.path.join(results_dir, "driven_trans_matrices_mod.png"), dpi=300)
 
 
 def make_states_3d_movie(z_finals, x_finals, title=None, lim=None,

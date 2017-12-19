@@ -10,6 +10,8 @@ np.random.seed(0)
 from tqdm import tqdm
 
 # Plotting stuff
+import matplotlib
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from hips.plotting.colormaps import gradient_cmap
 import seaborn as sns
@@ -56,7 +58,8 @@ from zimmer.plotting import plot_3d_continuous_states, plot_2d_continuous_states
     plot_3d_dynamics, plot_2d_dynamics, plot_state_overlap, plot_state_usage_by_worm, plot_all_transition_matrices, \
     plot_simulated_trajectories, make_state_predictions_3d_movie, plot_simulated_trajectories2, \
     plot_recurrent_transitions, plot_x_at_changepoints, plot_latent_trajectories_vs_time, \
-    plot_state_usage_by_worm_matrix, plot_duration_histogram, plot_driven_transition_matrices
+    plot_state_usage_by_worm_matrix, plot_duration_histogram, plot_driven_transition_matrices, \
+    plot_driven_transition_mod
 
 # LDS Results
 lds_dir = os.path.join("results", "nichols", "2017-11-13-hlds", "run001")
@@ -178,10 +181,13 @@ def _fit_model_wrapper(K, alpha=3, gamma=100., kappa=100.,
         data_kwargs = {}
         if is_hierarchical:
             data_kwargs["group"] = i
-        if is_separate_trans:
+        if is_separate_trans and is_recurrent and is_hierarchical:
             data_kwargs["trans_group"] = worms_groups_conditions[i][1]
 
-        model.add_data(x, covariates=u, stateseq=z.astype(np.int32), **data_kwargs)
+        if is_driven and is_recurrent:
+            data_kwargs["covariates"] = u
+            
+        model.add_data(x, stateseq=z.astype(np.int32), **data_kwargs)
 
     # Fit the model with Gibbs
     lls = []
@@ -195,7 +201,7 @@ def _fit_model_wrapper(K, alpha=3, gamma=100., kappa=100.,
         data_kwargs = {}
         if is_hierarchical:
             data_kwargs["group"] = i
-        if is_separate_trans:
+        if is_separate_trans and is_recurrent and is_hierarchical:
             data_kwargs["trans_group"] = worms_groups_conditions[i][1]
 
         if is_driven:
@@ -203,7 +209,10 @@ def _fit_model_wrapper(K, alpha=3, gamma=100., kappa=100.,
         else:
             covs = None
 
-        hll += model.log_likelihood(xtests[i], covariates=covs, **data_kwargs)
+        if is_driven and is_recurrent:
+            data_kwargs["covariates"] = covs
+
+        hll += model.log_likelihood(xtests[i], **data_kwargs)
 
     return model, np.array(lls), hll, None
 
@@ -478,10 +487,18 @@ def plot_best_model_results(do_plot_expected_states=True,
         plt.close("all")
 
     if do_plot_state_overlap:
-        plot_state_overlap(z_finals, [ztr[N_lags:] for ztr in z_trues],
-                           z_key=z_key,
-                           z_colors=zimmer_colors,
-                           results_dir=fig_dir)
+        # Combine states from each condition
+        condition_names = ["n2_1_prelet", "n2_2_let", "npr1_1_prelet", "npr1_2_let"]
+        titles = ["N2 pre-leth.", "N2 leth.", "npr1 pre-leth.", "npr1 leth."]
+        for condition, title in zip(condition_names, titles):
+            filename = condition + "_overlap.pdf"
+            plot_state_overlap([np.concatenate([z_finals[i] for i in range(len(z_finals)) if worms_groups_conditions[i][2] == condition])],
+                               [np.concatenate([z_trues[i][N_lags:] for i in range(len(z_finals)) if worms_groups_conditions[i][2] == condition])],
+                               z_key=z_key,
+                               z_colors=zimmer_colors,
+                               titles=[title],
+                               filename=filename,
+                               results_dir=fig_dir)
         plt.close("all")
 
     if do_plot_state_usage:
@@ -551,8 +568,14 @@ def plot_best_model_results(do_plot_expected_states=True,
         plt.close("all")
 
     if do_plot_driven_trans_matrices:
-        plot_driven_transition_matrices([10, 21], best_model.trans_distns, z_finals,
-                                        results_dir=fig_dir)
+        # plot_driven_transition_matrices([-0.7072, 1.4139], best_model.trans_distns, z_finals,
+        #                                 condition_names=["N2 pre-leth.", "N2 leth.", "npr1 pre-leth.", "npr1 leth."],
+        #                                 results_dir=fig_dir)
+
+        plot_driven_transition_mod([-0.7072, 1.4139], best_model.trans_distns,
+                                   perm=perm,
+                                   condition_names=["N2 pre-leth.", "N2 leth.", "npr1 pre-leth.", "npr1 leth."],
+                                   results_dir=fig_dir)
 
 
 # Using the smoothed states, run each model forward making predictions
@@ -601,7 +624,8 @@ if __name__ == "__main__":
     z_true_trains = lds_results['z_true_trains']
     z_true_tests = lds_results['z_true_tests']
     z_trues = [np.concatenate((ztr, zte)) for ztr, zte in zip(z_true_trains, z_true_tests)]
-    z_key = lds_results['z_key']
+    # z_key = lds_results['z_key']
+    z_key = ["Fwd", "Q", "Rev", "DT", "VT", "Oth."]
 
     T_trains = np.array([xtr.shape[0] for xtr in xtrains])
     T_tests = np.array([xte.shape[0] for xte in xtests])
