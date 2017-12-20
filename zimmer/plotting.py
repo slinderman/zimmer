@@ -770,41 +770,6 @@ def plot_state_overlap(z_finals, z_trues,
         # Normalize the rows
         overlap /= overlap.sum(1)[:, None]
         _plot_overlap(overlap, perm, "overlap_{}.pdf".format(worm), titles[worm])
-        #     fig = plt.figure(figsize=(2., 2))
-    #     ax1 = create_axis_at_location(fig, .5, .5, 1., 1)
-    #     im = ax1.imshow(overlap[:, perm], vmin=0, vmax=1.0, cmap="Greys", interpolation="nearest", aspect="auto")
-    #     ax1.set_xticks([])
-    #     if z_key is None:
-    #         ax1.set_yticks([])
-    #     else:
-    #         ax1.set_yticks(np.arange(K_zimmer))
-    #         ax1.set_yticklabels(z_key, fontdict=dict(size=6))
-    #         ax1.tick_params(axis='y', which='major', pad=11)
-    #     ax1.set_title(titles[worm])
-    #
-    #     lax = create_axis_at_location(fig, .4, .5, .06, 1)
-    #     lax.imshow(np.arange(K_zimmer)[:, None], cmap=gradient_cmap(z_colors[:K_zimmer]), interpolation="nearest",
-    #                aspect="auto")
-    #     lax.set_xticks([])
-    #     lax.set_yticks([])
-    #
-    #     if z_key is None:
-    #         lax.set_ylabel("Zimmer State", fontsize=8)
-    #
-    #     bax = create_axis_at_location(fig, .5, .4, 1., .06)
-    #     bax.imshow(np.arange(Kmax)[perm][None, :], cmap=gradient_cmap(colors[:Kmax]), interpolation="nearest", aspect="auto")
-    #     bax.set_xticks([])
-    #     bax.set_yticks([])
-    #     bax.set_xlabel("Inferred State", fontsize=8)
-    #
-    #     axcb = create_axis_at_location(fig, 1.55, .5, .1, 1)
-    #     plt.colorbar(im, cax=axcb)
-    #
-    #     if results_dir is not None:
-    #         filename = "overlap_{}.pdf".format(worm) if filename is None else filename
-    #         plt.savefig(os.path.join(results_dir, filename))
-    #
-    #     plt.close("all")
 
 
 def plot_state_usage_by_worm(z_finals,
@@ -876,6 +841,13 @@ def plot_state_usage_by_worm_matrix(z_finals,
     # ax.set_xticks(np.arange(N_worms))
     ax.set_xticklabels((ax.get_xticks() + 1).astype(int))
     plt.title("State usage by worm")
+
+    divider = make_axes_locatable(ax)
+    lax = divider.append_axes("left", size="3%", pad=0.05)
+    lax.imshow(np.arange(Kmax)[:, None], cmap=gradient_cmap(colors[:Kmax]), interpolation="nearest",
+               aspect="auto")
+    lax.set_xticks([])
+    lax.set_yticks([])
 
     divider = make_axes_locatable(ax)
     cax = divider.append_axes("right", size="5%", pad=0.05)
