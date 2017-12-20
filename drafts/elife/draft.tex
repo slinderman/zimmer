@@ -1,4 +1,4 @@
-\documentclass{article}
+\documentclass[11pt]{article}
 
 \input{preamble/preamble.tex}
 \input{preamble/preamble_math.tex}
@@ -63,8 +63,68 @@
 
 \section*{Results}
 
-\subsection*{Hierarchical models pool information while allowing individual variability}
-% Introduce the probabilistic model
+\subsection*{Hierarchical state space models combine information across
+  trials to learn canonical dynamics}
+
+% Goal: learn dynamical model of neural activity
+% Challenge 1: how to capture nonlinear dynamics of neural activity with simple model? 
+% Solution 1: recurrent state space models
+% Challenge 2: how to combine information across trials?
+% Solution 2: hierarchical model 
+
+We seek a parsimonious characterization of the dynamics of neural
+activity in the head ganglia of \celegans. Recent advances in optical
+imaging offer simultaneous recordings of most of the head ganglia
+neurons, but we must surmount two main challenges in order to extract
+a dynamics model from these data.  We need to design a model that is
+flexible enough to capture nonlinear dynamics yet interpretable enough
+to reveal simplifying structure when it exists. Moreover, our model
+must accept partial recordings from separate organisms to learn shared
+neural dynamics yet still allow for individual variability. We
+construct a hierarchical state space model that satisfies both
+criteria, decomposing complex dynamics into a collection of simpler
+pieces that can be learned from noisy, partial recordings with
+trial-to-trial variability.
+
+We study the data presented in~\citet{kato2015global} and
+\citet{nichols2017global}, which consist of a collection of optical
+recordings of calcium fluorescence in immobilized \celegans. The
+recordings are 18 minutes long with a frame rate of about 3Hz.  On
+average, about 100 single units are extracted from each
+recording. \celegans~is genetically stereotyped and each of its 302
+neurons has a unique label (e.g. \textsf{AVAL}). On average, 30 single
+units could be unambiguously labeled in each recording.
+
+To model this data, we build on switching linear dynamical systems
+(SLDS) \citep{chang1978state, ackerson1970state, hamilton1990analysis,
+  ghahramani1996switching, murphy1998switching}, a type of state space
+model that views data as a projection of a low-dimensional latent
+state that switches between linear dynamical regimes.  Formally,
+let~$y_t \in \reals^N$ denote the vector of neural activity observed
+at time~$t$.  The expected activity is given by,~$\E[y_t] = g(x_t)$,
+where~$x_t \in \reals^D$ is a continuous latent state
+and~$g: \reals^D \to \reals^N$ is a linear map. We assume~$D \ll N$,
+reflecting the low-dimensional nature of neural activity. SLDS
+simplify the dynamics of the continuous latent states by introducing a
+discrete latent state~$z_t \in \{1, \ldots, K\}$ that indicates the
+current dynamical regime.  Each discrete regime~$k$ is associated with
+a linear map~$f_k: \reals^D \to \reals^D$. The discrete state~$z_t$
+specifies which map to use in order to propagate~$x_t$ to the next
+time step.  Specifically,~$\E[x_{t+1}] = f_{z_t}(x_t)$. By switching
+between different linear dynamical regimes, the SLDS captures highly
+nonlinear dynamics.  We seek to infer the continuous and discrete
+latent states and simultaneously learn the linear maps, the
+distribution of the noise in the observations and the continuous
+states, and the dynamics that govern how the discrete latent states
+evolve.
+
+% Recurrent model
+
+% Robust model
+
+% Hierarchical model
+
+% Describe figure 1
 
 \begin{figure}[t]
 \centering%
@@ -95,6 +155,7 @@
 \label{fig:model}
 \end{figure}
 
+
 \subsection*{Emission models reveal clusters of neurons and aid in identification}
 
 \begin{figure}[t]
@@ -105,7 +166,7 @@
 \end{figure}
 
 
-\subsection*{AR-HMM's automatically parse data into discrete states with simple dynamics}
+\subsection*{SLDS automatically parse data into discrete states with simple dynamics}
 
 \begin{figure}[t]
 \centering%
