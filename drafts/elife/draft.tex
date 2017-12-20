@@ -1,0 +1,230 @@
+\documentclass{article}
+
+\input{preamble/preamble.tex}
+\input{preamble/preamble_math.tex}
+\input{preamble/preamble_acronyms.tex}
+
+\newcommand{\celegans}{\textit{C. elegans}}
+
+% \title{\large Discrete and continuous latent states of neural activity in \textit{Caenorhabditis elegans}}
+\title{Hierarchical recurrent models reveal latent states of neural activity in \textit{C. elegans}}
+\author{Scott Linderman$^{\text{1}}$,
+  Annika Nichols$^{\text{2}}$,
+  David Blei$^{\text{1}}$,
+  Manuel Zimmer$^{\text{2}}$,
+  and
+  Liam Paninski$^{\text{1}}$
+  \\
+  $^{\text{1}}$Columbia University,
+  $^{\text{2}}$Research Institute of Molecular Pathology (IMP), Vienna Biocenter
+}
+
+\begin{document}
+
+\doublespacing
+
+\maketitle
+
+\begin{abstract}
+  Recent advances in neural recording technologies have enabled
+  simultaneous measurements of the majority of head ganglia neurons in
+  both immobilized and freely-behaving
+  \celegans~\citep{schrodel2013brain, prevedel2014simultaneous,
+    nguyen2016whole}.  The dynamics of neural activity shed light on
+  how \celegans~processes sensory information and generates motor
+  activity.  To understand these dynamics, we develop recurrent state
+  space models that decompose complex time-series into segments with
+  simple, linear dynamics. We incorporate these models into a robust,
+  hierarchical framework for combining information across whole-brain
+  recordings of many worms.  Using this framework, we reveal latent
+  states of population neural activity, along with the discrete
+  behavioral modes that drive dynamics in this latent state space.  We
+  find stochastic transition patterns between these discrete
+  behavioral modes, and we see that transition probabilities are
+  determined by a combination of current brain state and environmental
+  cues.  In addition to quantifying neural dynamics, this
+  probabilistic framework aids in neural identification---currently a
+  laborious, manual task---and reveals clusters of neurons that are
+  similarly tuned in latent state space.  Finally, we find a
+  significant overlap between our inferred modes and the
+  manually-labeled modes of~\citet{kato2015global}
+  and~\citet{nichols2017global}, which were shown to correspond to
+  different behaviors, like forward crawling, reversals, and
+  turns. Our methods automatically discover and quantify these
+  behaviorally-meaningful states directly from neural activity,
+  yielding powerful new tools for neuro-behavioral analysis.
+\end{abstract}
+
+\clearpage
+
+\section*{Introduction}
+
+\clearpage
+
+\section*{Results}
+
+\subsection*{Hierarchical models pool information while allowing individual variability}
+% Introduce the probabilistic model
+
+\begin{figure}[t]
+\centering%
+\includegraphics[width=6in]{figures/figure1} 
+\caption{A schematic of the hierarchical model for combining
+  information across multiple worms in order to learn a shared
+  dynamical system for \celegans.  \textbf{a.}~All worms share a
+  canonical dynamics library. Here, we have three dynamics functions
+  (blue, red, gold), each of which is a simple linear mapping from
+  $x_t \in \reals^2$ to $x_{t+1} \in \reals^2$.  The recurrent model
+  assigns probabilities to the different dynamics functions based on
+  the current location in $x$-space.  \textbf{b.}~The worms also share
+  an emission matrix, $C$, which can be viewed as an embedding of
+  neurons in latent space.  \textbf{c.}~Each worm has its own dynamics
+  library, which allows for slight deviations from the canonical
+  dynamics.  \textbf{d.}~The model segments neural activity into a
+  sequence of discrete states~$z_{t} \in \{1, 2, 3\}$, which index
+  into the dynamics library.  \textbf{e.}~The discrete states specify
+  the dynamics that are used to propagate the continuous latent
+  states~$x_t$ forward in time. Here, the two dimensional latent
+  states are colored according to the instantaneous discrete
+  state. \textbf{f.}~The observed neural activity is a linear
+  projection of the underlying continuous latent states.  On any given
+  trial, we observe only a fraction of all the neurons.  The
+  hierarchical model combines these partial recordings to infer the
+  underlying states, the dynamics libraries, and the shared neural
+  embedding. }
+\label{fig:hslds}
+\end{figure}
+
+\subsection*{Emission models reveal clusters of neurons and aid in identification}
+
+\subsection*{AR-HMM's automatically parse data into discrete states with simple dynamics}
+
+\subsection*{Recurrent models learn spatially localized states and transition boundaries}
+
+\subsection*{Oxygen level modulates transition probabilities but not dynamics or emissions}
+
+
+\clearpage
+
+\section*{Discussion}
+
+\clearpage
+
+\bibliography{refs}
+\bibliographystyle{abbrvnat}
+
+\clearpage
+
+\appendix
+
+\section{Data}
+\label{sec:data}
+
+The data comes in the form of a collection of matrices~$\{\widetilde{Y}^{(w)}\}_{w=1}^W$
+for each of~$W$ worms.  The matrix~${\widetilde{Y}^{(w)} \in \reals^{T_w \times N_w}}$
+represents the calcium activity of the~$w$-th worm, which consists of~$T_w$
+time frames and~$N_w$ neurons.\footnote{Technically, this calcium activity is
+a matrix of first-order temporal differences of a
+bleaching-corrected~$\Delta F /F$ signal. Unlike~\citet{kato2015global}, we
+do not smooth these derivatives. We work with the raw first-order
+temporal differences.}  \celegans~is special in that each neuron has a unique
+name.  Assigning names to neurons in calcium imaging data is a challenging
+task, but typically, out of the~${\sim 100}$ neurons observed in any worm,
+we can label about~$20-30$ with high certainty.  As such, we choose to
+represent each matrix~$\widetilde{Y}^{(w)}$ in \emph{canonical form} as a
+tuple~$(Y^{(w)}, M^{(w)})$, where~${Y^{(w)} \in \reals^{T_w \times N}}$ is
+a matrix where each column corresponds to one of the~$N$ neurons that is
+identified in at least one of the~$W$ worms, and~${M^{(w)} \in \{0,1\}^{T_w \times N}}$
+is a corresponding \emph{mask} matrix that indicates which neurons were
+observed in worm~$w$.  If~$M_{:,n}^{(w)} = 1$, neuron~$n$ was labeled in
+worm~$w$ and~$Y_{:,n}^{(w)}$ was its observed activity.  If~$M_{:,n}^{(w)}=0$,
+this neuron was not observed in worm~$w$, and the corresponding activity
+is missing.\footnote{The mask is defined in such a way that neurons can
+  be missing for only subsets of time frames, but in our data neurons are
+  either labeled or missing.}
+% todo: note that we could also (and have also) model the activity of
+% unlabeled neurons.  For the final analyses, I'm not doing this though.
+
+\section{Hierarchical Generative Model}
+
+We model the neural activity with a switching linear
+dynamical system (SLDS) with three new extensions: (i)~a \emph{hierarchical} model
+to share parameters across worms while also allowing for worm-to-worm
+variability; (ii)~a \emph{robust} model for dynamics noise to help address
+model misspecification; and (iii)~a \emph{recurrent} model to capture
+how continuous latent states influence discrete state transition probabilities.
+We will introduce the SLDS first and then present each of these extensions
+in turn.
+
+
+\subsection{Switching linear dynamical systems}
+\label{sec:slds}
+Switching linear dynamical system models (SLDS) break down complex, nonlinear
+time series data into sequences of simpler, reused dynamical modes.
+By fitting an SLDS to data, we not only learn a flexible nonlinear generative
+model, but also learn to parse data sequences into coherent discrete units.
+
+The generative model is as follows. At each time ${t=1,2,\ldots,T}$,
+for each worm~$w$,
+there is a discrete latent state ${z_t^{(w)} \in \{1,2, \ldots,K\}}$ that
+follows Markovian dynamics,
+\begin{equation}
+  z_{t+1}^{(w)} \given z_t^{(w)}, \{\pi_k\}_{k=1}^K  \sim \pi_{z_t^{(w)}}
+  \label{eq:markov_z}
+\end{equation}
+where ${\{\pi_k\}_{k=1}^K}$ is the Markov transition matrix and
+${\pi_k \in [0,1]^K}$ is its $k$th row. 
+In addition, a continuous latent state ${x_t^{(w)} \in \reals^D}$ follows
+conditionally linear (or affine) dynamics, where the discrete state $z_t^{(w)}$
+determines the linear dynamical system used at time $t$:
+\begin{align}
+  x_{t+1}^{(w)} &= A_{z_{t+1}^{(w)}} x_{t}^{(w)} + b_{z_{t+1}^{(w)}} +  u_t^{(w)},
+  &
+  u_t^{(w)} &\iid\sim \cN(0,Q_{z_{t+1}^{(w)}}),
+  \label{eq:slds_start}
+\end{align}
+for matrices ${A_k, Q_k \in \reals^{D \times D}}$ and vectors~${b_k\in
+\reals^D}$ for~${k=1,2,\ldots,K}$.
+Finally, at each time $t$ a linear Gaussian observation $y_t^{(w)} \in \reals^N$
+(some entries of~$y_t^{(w)}$ are masked off; recall Section~\ref{sec:data}) is
+generated from the corresponding latent continuous state,
+\begin{align}
+  y_t^{(w)} &= C x_t^{(w)} + d + v_t^{(w)}, & v_t^{(w)} &\iid\sim \cN(0,S),
+    \label{eq:slds_end}
+\end{align}
+for $C \in \reals^{N \times D}$, $S \in \reals^{N \times N}$,
+and~$d \in \reals^N$. We denote the rows of~$C$ by vectors~$c_n$.
+For simplicity, we assume~$C$,~$d$, and~$S$ to
+be shared among all discrete states in our model.  Moreover, we assume
+the observation noise is diagonal,
+\begin{align*}
+  S &= \diag\left(\left[s_{1}, \ldots, s_{N} \right] \right). 
+\end{align*}
+The system parameters comprise the discrete Markov transition matrix, the
+library of linear dynamical system matrices, and the neuron-specific
+emission parameters, which we write as
+\begin{equation*}
+  \theta = \{(\pi_k, A_k, Q_k, b_k)\}_{k=1}^K \cup \{c_n, d_n, s_n\}_{n=1}^N.
+\end{equation*}
+
+To learn an SLDS using Bayesian inference, we place conjugate Dirichlet priors
+on each row of the transition matrix and conjugate matrix normal
+inverse Wishart (MNIW) priors on the linear dynamical system parameters,
+Gaussian priors on the rows of the emission matrix,
+and inverse gamma priors on the emission noise.
+We write this as,
+\begin{align*}
+  \pi_k &\given \alpha \iid\sim \distDirichlet(\alpha),
+  &
+  [A_k, b_k], Q_k &\given \lambda \iid\sim \distMNIW(\lambda),
+  \\
+  [c_n, d_n] &\given \eta \iid\sim \distNormal(\eta),
+  &
+  s_{n} &\given \eta \iid\sim \mathrm{IG}(\eta).
+\end{align*}
+where~$[\cdot, \cdot]$ denotes column concatenation, and $\alpha$, $\lambda$,
+and~$\eta$ denote appropriate hyperparameters of the transitions, dynamics, and
+emissions, respectively.
+
+
+\end{document}

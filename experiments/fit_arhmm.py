@@ -508,6 +508,7 @@ def plot_best_model_results(do_plot_expected_states=True,
         plot_duration_histogram(best_model.trans_distn,
                                 z_finals,
                                 durss,
+                                perm=perm,
                                 results_dir=fig_dir)
         plt.close("all")
 
@@ -559,8 +560,6 @@ if __name__ == "__main__":
     C_norm = C[:, :-1] / np.linalg.norm(C[:, :-1], axis=1)[:, None]
     C_clusters = np.array([C[neuron_clusters == c].mean(0) for c in range(N_clusters)])
     d_clusters = np.array([d[neuron_clusters == c].mean(0) for c in range(N_clusters)])
-
-
 
     # Set the AR-HMM hyperparameters
     ar_params = dict(nu_0=D_latent + 2,
@@ -614,17 +613,17 @@ if __name__ == "__main__":
     plot_best_model_results(
         do_plot_expected_states=False,
         do_plot_x_2d=False,
-        do_plot_x_3d=True,
+        do_plot_x_3d=False,
         do_plot_dynamics_3d=False,
         do_plot_dynamics_2d=False,
         do_plot_state_overlap=False,
         do_plot_state_usage=False,
-        do_plot_transition_matrices=False,
+        do_plot_transition_matrices=True,
         do_plot_simulated_trajs=False,
         do_plot_recurrent_weights=False,
         do_plot_x_at_changepoints=False,
         do_plot_latent_trajectories_vs_time=False,
-        do_plot_duration_histogram=True
+        do_plot_duration_histogram=False
     )
 
     # Rolling predictions

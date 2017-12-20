@@ -47,11 +47,11 @@ from pybasicbayes.distributions import Regression, DiagonalRegression
 from pylds.models import MissingDataLDS
 
 # IO
-# run_num = 2
-# results_dir = os.path.join("results", "2017-11-03-hlds", "run{:03d}".format(run_num))
-# signal = "dff_diff"
-results_dir = os.path.join("results", "2017-11-03-hlds", "run003_dff_bc")
-signal = "dff_bc"
+run_num = 2
+results_dir = os.path.join("results", "2017-11-03-hlds", "run{:03d}".format(run_num))
+signal = "dff_diff"
+# results_dir = os.path.join("results", "2017-11-03-hlds", "run003_dff_bc")
+# signal = "dff_bc"
 
 assert os.path.exists(results_dir)
 fig_dir = os.path.join(results_dir, "figures")
@@ -83,7 +83,7 @@ def cached(results_name):
 
 def load_data(include_unnamed=True):
     # Load the data
-    worm_datas = [WormData(i, name="worm{}".format(i)) for i in range(N_worms)]
+    worm_datas = [WormData(i, name="worm{}".format(i), version="kato") for i in range(N_worms)]
 
     # Get the "true" discrete states as labeled by Zimmer
     z_trues = [wd.zimmer_states for wd in worm_datas]
@@ -302,6 +302,7 @@ def plot_best_model_results(best_model,
                             do_plot_sigmasq=True,
                             do_plot_similarity=True,
                             do_plot_cluster_embedding=True,
+                            do_plot_cluster_locations=True,
                             do_plot_data=True):
 
     # False color with the "true" label from Zimmer
@@ -488,6 +489,45 @@ def plot_best_model_results(best_model,
 
         plt.close("all")
         # plt.show()
+
+    if do_plot_cluster_locations:
+        import pandas
+        locs = pandas.read_csv("wormatlas_locations.csv").values
+        l_values = np.unique(locs[:,1])
+
+        fig = plt.figure(figsize=(1.5, 2.5))
+        ax = fig.add_subplot(111)
+        spc = 1
+
+        sizes = dict([(lv, 2) for lv in l_values])
+        for name in neuron_names:
+            i2 = np.where(locs[:, 0] == name)[0][0]
+            l = locs[i2, 1]
+            plt.plot(l, 0, 'ko', markersize=sizes[l], alpha=0.5)
+            sizes[l] += 1
+
+        ax.spines["left"].set_visible(False)
+        ax.spines["top"].set_visible(False)
+        ax.spines["right"].set_visible(False)
+        ax.set_xlim([0.03, 0.27])
+        ax.set_yticks([])
+        ax.set_ylim(spc * (N_clusters+1), -spc)
+        ax.set_xticks([0.05, 0.15, 0.25])
+        ax.set_xlabel("location")
+
+        for cluster in range(N_clusters):
+            sizes = dict([(lv, 2) for lv in l_values])
+            for i1 in np.where(neuron_clusters == cluster)[0]:
+                i2 = np.where(locs[:,0] == neuron_names[i1])[0][0]
+                l = locs[i2, 1]
+                plt.plot(l, spc * (cluster+1), 'o', color=colors[0], markersize=sizes[l], alpha=0.5)
+                sizes[l] += 1
+
+        # plt.tight_layout(rect=(0.01, 0.01, .98, .98))
+        plt.tight_layout(pad=0.05)
+        plt.savefig(os.path.join(fig_dir, "cluster_locs.pdf"))
+
+        plt.close("all")
 
 def fit_all_models(D_latents=np.arange(2, 21, 2)):
     axs = None
@@ -722,11 +762,12 @@ if __name__ == "__main__":
     # plot_likelihoods(final_lls, hlls, best_index)
     #
     plot_best_model_results(best_model,
-                            do_plot_x_3d=True,
+                            do_plot_x_3d=False,
                             do_plot_x_2d=False,
                             do_plot_sigmasq=False,
                             do_plot_similarity=False,
                             do_plot_cluster_embedding=False,
+                            do_plot_cluster_locations=True,
                             do_plot_data=False)
 
     # heldout_neuron_identification()

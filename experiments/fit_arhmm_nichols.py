@@ -499,6 +499,16 @@ def plot_best_model_results(do_plot_expected_states=True,
                                titles=[title],
                                filename=filename,
                                results_dir=fig_dir)
+
+        filename = condition + "overlap_total.pdf"
+        plot_state_overlap([np.concatenate([z_finals[i] for i in range(len(z_finals))])],
+                           [np.concatenate([z_trues[i][N_lags:] for i in range(len(z_finals))])],
+                           z_key=z_key,
+                           z_colors=zimmer_colors,
+                           titles=[title],
+                           filename=filename,
+                           results_dir=fig_dir)
+
         plt.close("all")
 
     if do_plot_state_usage:
@@ -564,6 +574,7 @@ def plot_best_model_results(do_plot_expected_states=True,
         plot_duration_histogram(best_model.trans_distn,
                                 z_finals,
                                 durss,
+                                perm=perm,
                                 results_dir=fig_dir)
         plt.close("all")
 

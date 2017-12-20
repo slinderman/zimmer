@@ -705,31 +705,7 @@ def plot_state_overlap(z_finals, z_trues,
     titles = ["State Overlap (Worm {})".format(i+1) for i in range(len(z_trues))] \
       if titles is None else titles
 
-    # Use the Hungarian algorithm to find a permutation of states that
-    # yields the highest overlap
-    overlap = np.zeros((K_zimmer, Kmax), dtype=float)
-    for z_true, z_inf in zip(z_trues, z_finals):
-        for k1 in range(K_zimmer):
-            for k2 in range(Kmax):
-                overlap[k1, k2] = np.sum((z_true == k1) & (z_inf == k2))
-
-    from scipy.optimize import linear_sum_assignment
-    _, perm = linear_sum_assignment(-overlap)
-
-    # Add any unused inferred states
-    if Kmax > K_zimmer:
-        unused = np.array(list(set(np.arange(Kmax)) - set(perm)))
-        perm = np.concatenate((perm, unused))
-
-    # Compare zimmer labels to inferred labels
-    for worm, (z_true, z_inf) in enumerate(zip(z_trues, z_finals)):
-        overlap = np.ones((K_zimmer, Kmax), dtype=float)
-        for k1 in range(K_zimmer):
-            for k2 in range(Kmax):
-                overlap[k1, k2] += np.sum((z_true == k1) & (z_inf == k2))
-
-        # Normalize the rows
-        overlap /= overlap.sum(1)[:, None]
+    def _plot_overlap(overlap, perm, filename, title):
 
         fig = plt.figure(figsize=(2., 2))
         ax1 = create_axis_at_location(fig, .5, .5, 1., 1)
@@ -741,7 +717,7 @@ def plot_state_overlap(z_finals, z_trues,
             ax1.set_yticks(np.arange(K_zimmer))
             ax1.set_yticklabels(z_key, fontdict=dict(size=6))
             ax1.tick_params(axis='y', which='major', pad=11)
-        ax1.set_title(titles[worm])
+        ax1.set_title(title)
 
         lax = create_axis_at_location(fig, .4, .5, .06, 1)
         lax.imshow(np.arange(K_zimmer)[:, None], cmap=gradient_cmap(z_colors[:K_zimmer]), interpolation="nearest",
@@ -762,10 +738,73 @@ def plot_state_overlap(z_finals, z_trues,
         plt.colorbar(im, cax=axcb)
 
         if results_dir is not None:
-            filename = "overlap_{}.pdf".format(worm) if filename is None else filename
             plt.savefig(os.path.join(results_dir, filename))
 
-        plt.close("all")
+    # Use the Hungarian algorithm to find a permutation of states that
+    # yields the highest overlap
+    overlap = np.zeros((K_zimmer, Kmax), dtype=float)
+    for z_true, z_inf in zip(z_trues, z_finals):
+        for k1 in range(K_zimmer):
+            for k2 in range(Kmax):
+                overlap[k1, k2] = np.sum((z_true == k1) & (z_inf == k2))
+
+    from scipy.optimize import linear_sum_assignment
+    _, perm = linear_sum_assignment(-overlap)
+
+    # Add any unused inferred states
+    if Kmax > K_zimmer:
+        unused = np.array(list(set(np.arange(Kmax)) - set(perm)))
+        perm = np.concatenate((perm, unused))
+
+    # Normalize the overlap from all worms and plot
+    overlap /= overlap.sum(1)[:, None]
+    _plot_overlap(overlap, perm, "overlap_all.pdf", "State Overlap (All Worms)")
+
+    # Compare zimmer labels to inferred labels
+    for worm, (z_true, z_inf) in enumerate(zip(z_trues, z_finals)):
+        overlap = np.ones((K_zimmer, Kmax), dtype=float)
+        for k1 in range(K_zimmer):
+            for k2 in range(Kmax):
+                overlap[k1, k2] += np.sum((z_true == k1) & (z_inf == k2))
+
+        # Normalize the rows
+        overlap /= overlap.sum(1)[:, None]
+        _plot_overlap(overlap, perm, "overlap_{}.pdf".format(worm), titles[worm])
+        #     fig = plt.figure(figsize=(2., 2))
+    #     ax1 = create_axis_at_location(fig, .5, .5, 1., 1)
+    #     im = ax1.imshow(overlap[:, perm], vmin=0, vmax=1.0, cmap="Greys", interpolation="nearest", aspect="auto")
+    #     ax1.set_xticks([])
+    #     if z_key is None:
+    #         ax1.set_yticks([])
+    #     else:
+    #         ax1.set_yticks(np.arange(K_zimmer))
+    #         ax1.set_yticklabels(z_key, fontdict=dict(size=6))
+    #         ax1.tick_params(axis='y', which='major', pad=11)
+    #     ax1.set_title(titles[worm])
+    #
+    #     lax = create_axis_at_location(fig, .4, .5, .06, 1)
+    #     lax.imshow(np.arange(K_zimmer)[:, None], cmap=gradient_cmap(z_colors[:K_zimmer]), interpolation="nearest",
+    #                aspect="auto")
+    #     lax.set_xticks([])
+    #     lax.set_yticks([])
+    #
+    #     if z_key is None:
+    #         lax.set_ylabel("Zimmer State", fontsize=8)
+    #
+    #     bax = create_axis_at_location(fig, .5, .4, 1., .06)
+    #     bax.imshow(np.arange(Kmax)[perm][None, :], cmap=gradient_cmap(colors[:Kmax]), interpolation="nearest", aspect="auto")
+    #     bax.set_xticks([])
+    #     bax.set_yticks([])
+    #     bax.set_xlabel("Inferred State", fontsize=8)
+    #
+    #     axcb = create_axis_at_location(fig, 1.55, .5, .1, 1)
+    #     plt.colorbar(im, cax=axcb)
+    #
+    #     if results_dir is not None:
+    #         filename = "overlap_{}.pdf".format(worm) if filename is None else filename
+    #         plt.savefig(os.path.join(results_dir, filename))
+    #
+    #     plt.close("all")
 
 
 def plot_state_usage_by_worm(z_finals,
@@ -935,6 +974,24 @@ def plot_all_transition_matrices(z_finals,
 
     if results_dir is not None:
         plt.savefig(os.path.join(results_dir, "trans_matrices.pdf"))
+
+    # Plot total transition matrix
+    fig = plt.figure(figsize=(2, 2))
+    for worm in range(N_worms):
+        ax = fig.add_subplot(111)
+        trans_matrix = _count_transitions(np.concatenate([z[:-1] for z in z_finals_perm]),
+                                          np.concatenate([z[1:]  for z in z_finals_perm]))
+        _plot_transition_matrix(ax, trans_matrix, colors=colors, cmap=gradient_cmap(colors), vmax=1)
+        ax.set_title("Transition Matrix (All Worms)")
+        ax.set_xlabel("$z_{t+1}$", labelpad=10)
+        if worm == 0:
+            ax.set_ylabel("$z_t$", labelpad=10)
+
+    plt.tight_layout(pad=0.1)
+
+
+    if results_dir is not None:
+        plt.savefig(os.path.join(results_dir, "trans_matrices_all.pdf"))
 
 
 def plot_simulated_trajectories(k, x_trajs, x_sim, C, d, T,
@@ -1271,6 +1328,7 @@ def plot_recurrent_transitions(trans_distn, xs, zs,
 
 
 def plot_duration_histogram(trans_distn, zs, sim_durs,
+                            perm=None,
                             colors=None,
                             results_dir=None):
 
@@ -1282,8 +1340,11 @@ def plot_duration_histogram(trans_distn, zs, sim_durs,
     states = np.concatenate(states)
     durs = np.concatenate(durs)
     K = np.max(states) + 1
+    perm = np.arange(K) if perm is None else perm
 
-    logpi = trans_distn.logpi
+    import ipdb; ipdb.set_trace()
+
+    logpi = trans_distn.logpi[np.ix_(perm, perm)]
     P = np.exp(logpi)
     P /= P.sum(axis=1, keepdims=True)
 
