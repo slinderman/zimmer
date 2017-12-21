@@ -215,12 +215,9 @@ def plot_neural_activity():
         fig = plt.figure(figsize=(1.5, 2))
         ax = fig.add_subplot(111)
 
-        mask = np.zeros(N, dtype=bool)
-        mask[np.random.choice(N, size=6, replace=False)] = True
-
         for n in range(N):
             ax.plot(np.arange(T), n + np.zeros(T), '-k', lw=0.5)
-            if mask[n]:
+            if masks[w, n]:
                 ax.plot(np.arange(T), n + ys[w][:,n], color=colors[3])
 
         ax.set_ylim(N, -1)
@@ -232,6 +229,32 @@ def plot_neural_activity():
         plt.savefig("fig1_y{}.pdf".format(w + 1))
 
     plt.close("all")
+
+
+def plot_observation_variance():
+    sigmasq = np.random.gamma(shape=1, scale=1, size=(W, N))
+    sigmasq[~masks] = np.nan
+
+    from hips.plotting.colormaps import gradient_cmap
+    cmap = gradient_cmap([np.ones(3), colors[0]])
+    cmap.set_bad(0.7 * np.ones(3))
+
+    fig = plt.figure(figsize=(1.5, .5))
+    ax = fig.add_subplot(111)
+
+    im = ax.imshow(sigmasq, vmin=0, aspect="auto", cmap=cmap)
+    ax.set_xticks([])
+    ax.set_xlabel("neuron")
+    ax.set_yticks([])
+    ax.set_ylabel("worm")
+
+    ax.set_title("observation variance")
+
+    plt.colorbar(im, ticks=[0, 2.5])
+
+    plt.tight_layout(pad=0.1)
+    plt.savefig("fig1_variance.pdf")
+    plt.show()
 
 
 if __name__ == "__main__":
@@ -251,23 +274,27 @@ if __name__ == "__main__":
     # simulate observations
     sigma = 0.1
     ys = [x.dot(C.T) + sigma * np.random.randn(T, N) for x in xs]
+    masks = np.zeros((W, N), dtype=bool)
+    for w in range(W):
+        masks[w, np.random.choice(N, size=6, replace=False)] = True
+
     for y in ys:
         y /= (2.1 * np.max(abs(y)))
 
-    # Plot the canonical dynamics
-    for k in range(K):
-        plot_vector_field_2d(k, As, bs, worm=-1)
-    plt.close("all")
-
-    # Plot the individual worm dynamics
-    for k in range(K):
-        for w in range(W):
-            plot_vector_field_2d(k, Ahats[w], bhats[w], worm=w)
-    plt.close("all")
+    # # Plot the canonical dynamics
+    # for k in range(K):
+    #     plot_vector_field_2d(k, As, bs, worm=-1)
+    # plt.close("all")
+    #
+    # # Plot the individual worm dynamics
+    # for k in range(K):
+    #     for w in range(W):
+    #         plot_vector_field_2d(k, Ahats[w], bhats[w], worm=w)
+    # plt.close("all")
 
     # Plot the latent states of each worm
     # plot_neural_tuning(C)
     # plot_discrete_latent_states()
     # plot_continuous_latent_states()
     # plot_neural_activity()
-
+    plot_observation_variance()

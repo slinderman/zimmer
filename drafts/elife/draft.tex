@@ -63,70 +63,10 @@
 
 \section*{Results}
 
-\subsection*{Hierarchical state space models combine information across
+\subsection*{A probabilistic framework that combines information across
   trials to learn canonical dynamics}
 
-% Goal: learn dynamical model of neural activity
-% Challenge 1: how to capture nonlinear dynamics of neural activity with simple model? 
-% Solution 1: recurrent state space models
-% Challenge 2: how to combine information across trials?
-% Solution 2: hierarchical model 
-
-We seek a parsimonious characterization of the dynamics of neural
-activity in the head ganglia of \celegans. Recent advances in optical
-imaging offer simultaneous recordings of most of the head ganglia
-neurons, but we must surmount two main challenges in order to extract
-a dynamics model from these data.  We need to design a model that is
-flexible enough to capture nonlinear dynamics yet interpretable enough
-to reveal simplifying structure when it exists. Moreover, our model
-must accept partial recordings from separate organisms to learn shared
-neural dynamics yet still allow for individual variability. We
-construct a hierarchical state space model that satisfies both
-criteria, decomposing complex dynamics into a collection of simpler
-pieces that can be learned from noisy, partial recordings with
-trial-to-trial variability.
-
-We study the data presented in~\citet{kato2015global} and
-\citet{nichols2017global}, which consist of a collection of optical
-recordings of calcium fluorescence in immobilized \celegans. The
-recordings are 18 minutes long with a frame rate of about 3Hz.  On
-average, about 100 single units are extracted from each
-recording. \celegans~is genetically stereotyped and each of its 302
-neurons has a unique label (e.g. \textsf{AVAL}). On average, 30 single
-units could be unambiguously labeled in each recording.
-
-To model this data, we build on switching linear dynamical systems
-(SLDS) \citep{chang1978state, ackerson1970state, hamilton1990analysis,
-  ghahramani1996switching, murphy1998switching}, a type of state space
-model that views data as a projection of a low-dimensional latent
-state that switches between linear dynamical regimes.  Formally,
-let~$y_t \in \reals^N$ denote the vector of neural activity observed
-at time~$t$.  The expected activity is given by,~$\E[y_t] = g(x_t)$,
-where~$x_t \in \reals^D$ is a continuous latent state
-and~$g: \reals^D \to \reals^N$ is a linear map. We assume~$D \ll N$,
-reflecting the low-dimensional nature of neural activity. SLDS
-simplify the dynamics of the continuous latent states by introducing a
-discrete latent state~$z_t \in \{1, \ldots, K\}$ that indicates the
-current dynamical regime.  Each discrete regime~$k$ is associated with
-a linear map~$f_k: \reals^D \to \reals^D$. The discrete state~$z_t$
-specifies which map to use in order to propagate~$x_t$ to the next
-time step.  Specifically,~$\E[x_{t+1}] = f_{z_t}(x_t)$. By switching
-between different linear dynamical regimes, the SLDS captures highly
-nonlinear dynamics.  We seek to infer the continuous and discrete
-latent states and simultaneously learn the linear maps, the
-distribution of the noise in the observations and the continuous
-states, and the dynamics that govern how the discrete latent states
-evolve.
-
-% Recurrent model
-
-% Robust model
-
-% Hierarchical model
-
-% Describe figure 1
-
-\begin{figure}[t]
+\begin{figure}[ht]
 \centering%
 \includegraphics[width=6in]{figures/figure1} 
 \caption{A schematic of the hierarchical model for combining
@@ -154,6 +94,129 @@ evolve.
   embedding. }
 \label{fig:model}
 \end{figure}
+
+We seek a parsimonious characterization of the dynamics of neural
+activity in the head ganglia of \celegans. Recent advances in optical
+imaging offer simultaneous recordings of most of the head ganglia
+neurons, but we must surmount three main challenges in order to learn
+a dynamics model from these data.  First, we need to design a model
+flexible enough to capture nonlinear dynamics yet interpretable enough
+to reveal simplifying structure when it exists.  Moreover, any model
+will necessarily be an approximation to the true neural dynamics, and
+as such we need to be robust to data that does not quite match model
+predictions.  Finally, our model must combine partial recordings from
+separate organisms to learn shared neural dynamics yet still allow for
+individual variability. We construct a recurrent, robust, and
+hierarchical state space model that addresses these challenges,
+decomposing complex dynamics into a collection of simpler pieces that
+can be learned from noisy, partial recordings with trial-to-trial
+variability.
+
+We study the data presented in~\citet{kato2015global} and
+\citet{nichols2017global}, which consist of a collection of optical
+recordings of calcium fluorescence in immobilized \celegans. The
+recordings are 18 minutes long with a frame rate of about 3Hz.  On
+average, about 100 single units are extracted from each
+recording. \celegans~is genetically stereotyped and each of its 302
+neurons has a unique label (e.g. \textsf{AVAL}). On average, 30 single
+units could be unambiguously labeled in each
+recording. Fig.~\ref{fig:model}a illustrates this type of data. The
+three panels represent recordings from three separate worms, and the
+rows correspond to different neuron labels.  Neural activity is
+measured for only a subset of neurons in each worm.
+
+% To model this data, we build on switching linear dynamical systems
+% (SLDS) \citep{chang1978state, ackerson1970state, hamilton1990analysis,
+%   ghahramani1996switching, murphy1998switching}, a type of state space
+% model that views data as a projection of a low-dimensional latent
+% state that switches between linear dynamical regimes.  Formally,
+% let~$y_t \in \reals^N$ denote the vector of neural activity observed
+% at time~$t$.  The expected activity is given by,~$\E[y_t] = g(x_t)$,
+% where~$x_t \in \reals^D$ is a continuous latent state
+% and~$g: \reals^D \to \reals^N$ is a linear map. We assume~$D \ll N$,
+% reflecting the low-dimensional nature of neural activity. SLDS
+% simplify the dynamics of the continuous latent states by introducing a
+% discrete latent state~$z_t \in \{1, \ldots, K\}$ that indicates the
+% current dynamical regime.  Each discrete regime~$k$ is associated with
+% a linear map~$f_k: \reals^D \to \reals^D$. The discrete state~$z_t$
+% specifies which map to use in order to propagate~$x_t$ to the next
+% time step.  Specifically,~$\E[x_{t+1}] = f_{z_t}(x_t)$. By switching
+% between different linear dynamical regimes, the SLDS captures highly
+% nonlinear dynamics.  We seek to infer the continuous and discrete
+% latent states and simultaneously learn the linear maps, the
+% distribution of the noise in the observations and the continuous
+% states, and the dynamics that govern how the discrete latent states
+% evolve.
+To model this data, we build on switching linear dynamical systems
+(SLDS) \citep{chang1978state, ackerson1970state, hamilton1990analysis,
+  ghahramani1996switching, murphy1998switching}, a type of state space
+model that views data as a projection of a low-dimensional latent
+state that switches between linear dynamical regimes.  The expected
+activity is a linear function of an underlying, continuous latent
+state, illustrated as two-dimensional time series for each worm in
+Fig.~\ref{fig:model}b.  We typically assume this latent state is lower
+dimensional than the number of observed neurons. SLDS simplify the
+dynamics of the continuous latent states by introducing discrete
+latent states that indicate the current dynamical regime
+(Fig.~\ref{fig:model}c).  Each discrete regime is associated with a
+linear map (Fig.~\ref{fig:model}d), and the discrete state specifies
+which map to use in order to propagate the continuous latent state to
+the next time step.  By switching between different linear dynamical
+regimes, the SLDS captures highly nonlinear dynamics.  We seek to
+infer the continuous and discrete latent states and simultaneously
+learn the linear maps, the distribution of the noise in the
+observations and the continuous states, and the dynamics that govern
+how the discrete latent states evolve.
+
+% Recurrent model
+Standard SLDS treat the discrete latent states as a simple Markov
+process: the next state depends only on the current state. However,
+this neglects the more nuanced ways in which discrete and continuous
+states may co-evolve. For example, the next discrete state may depend
+on both the current discrete state and the current location in
+continuous latent space; intuitively, different dynamical regimes may
+be employed in different regions of continuous latent space. These
+types of dependencies are captured by what are variously called
+hybrid~\citep{paoletti2007identification},
+augmented~\citep{barber2006expectation}, or \emph{recurrent} state
+space models~\citep{linderman2017recurrent}. The maps in
+Fig.~\ref{fig:model}d illustrate how these dependencies may modulate
+the probability of different dynamics depending on the current
+location in continuous latent space. We employ these recurrent models
+to learn dynamical regimes that are selectively employed as a
+function of current continuous brain state.
+
+% Robust model
+While recurrent SLDS can approximate highly nonlinear systems, they
+are still misspecified. \emph{Robust} methods~\citep{huber1981robust}
+ameliorate this concern by lessening the penalty on observations that
+do not quite match the dynamics of the current regime.  We achieve
+this robustness by replacing the standard Gaussian noise model with a
+multivariate-t distribution~\citep{lange1989robust}.  The heavy tails
+of this distribution permit outliers and account for some of the model
+misspecification.
+
+% Hierarchical model
+The third component of our framework is a \emph{hierarchical} model
+for learning canonical dynamics from partial recordings collected from
+many worms.  Since each recording contains a different subset of
+labeled neurons, our first step is to align the data, treating the
+activity of neurons that were not found in a given recording as
+missing data that must be inferred.  We handle this by integrating
+over possible activity of the missing neurons, analytically
+marginalizing out this missing data.  The second challenge is
+combining information from many recordings while also allowing for
+worm-to-worm differences.  For example, the neural activitiy may have
+larger variance in some recordings than in others due to different
+levels of expression of the fluorescent protein.  We allow for this by
+having a separate variance for each worm and neuron, as shown in
+Fig.~\ref{fig:model}f.  More importantly, the dynamics of neural
+activity may be slightly different from worm to worm.  We account for
+this by introducing a canonical library of dynamical regimes
+(Fig.~\ref{fig:model}e) that are shared by all worms as well as a
+unique library for each individual worm (Fig.~\ref{fig:model}d);
+however, we constrain the per-worm dynamics to be close to the
+canonical dynamics.
 
 
 \subsection*{Emission models reveal clusters of neurons and aid in identification}
