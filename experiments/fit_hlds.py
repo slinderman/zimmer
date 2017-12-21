@@ -392,34 +392,48 @@ def plot_best_model_results(best_model,
 
         plt.show()
 
-    # if do_plot_cluster_embedding:
-    #     for cluster in range(N_clusters):
-    #         fig = plt.figure(figsize=(1.5, 1.5))
-    #         ax = fig.add_subplot(111, projection="3d")
-    #         for i in np.where(neuron_clusters == cluster)[0]:
-    #             ci = C[i]
-    #             ci /= np.linalg.norm(ci)
-    #             ax.plot([0, ci[0]],
-    #                      [0, ci[1]],
-    #                      [0, ci[2]],
-    #                      '-k', lw=1)
-    #             ax.plot([ci[0]],
-    #                     [ci[1]],
-    #                     [ci[2]],
-    #                     'ok', markersize=4)
-    #             # ax.text(1.1 * ci[0], 1.1 * ci[1], 1.1 * ci[2], neuron_names[i], fontsize=6)
-    #
-    #         ax.set_xlabel("$x_1$", labelpad=-10)
-    #         ax.set_ylabel("$x_2$", labelpad=-10)
-    #         ax.set_zlabel("$x_3$", labelpad=-10)
-    #         ax.set_xticklabels([])
-    #         ax.set_yticklabels([])
-    #         ax.set_zticklabels([])
-    #         ax.set_xlim(-.75, .75)
-    #         ax.set_ylim(-.75, .75)
-    #         ax.set_zlim(-.75, .75)
-    #
-    #     plt.show()
+    if do_plot_cluster_embedding:
+
+        fig = plt.figure(figsize=(.5, .5))
+        ax = fig.add_subplot(111, projection="3d")
+        for cluster in range(N_clusters):
+            for i in np.where(neuron_clusters == cluster)[0]:
+                ci = C[i]
+                ci /= np.linalg.norm(ci)
+                ax.plot([0, ci[0]], [0, ci[1]], [0, ci[2]],
+                         '-k', lw=.5)
+                ax.plot([ci[0]], [ci[1]], [ci[2]],
+                        'ok', markersize=1)
+                # ax.text(1.1 * ci[0], 1.1 * ci[1], 1.1 * ci[2], neuron_names[i], fontsize=6)
+
+            # ax.set_xlabel("$x_1$", labelpad=-10)
+            # ax.set_ylabel("$x_2$", labelpad=-10)
+            # ax.set_zlabel("$x_3$", labelpad=-10)
+            ax.set_xticklabels([])
+            ax.set_yticklabels([])
+            ax.set_zticklabels([])
+            ax.set_xlim(-.75, .75)
+            ax.set_ylim(-.75, .75)
+            ax.set_zlim(-.75, .75)
+
+        plt.tight_layout(pad=0.05)
+        plt.savefig(os.path.join(fig_dir, "embedding.pdf"))
+        plt.show()
+
+        fig = plt.figure(figsize=(1., .5))
+        ax = fig.add_subplot(111)
+        lim = abs(C).max()
+        ax.imshow(C[neuron_perm].T, aspect="auto", vmin=-lim, vmax=lim, cmap="RdBu")
+
+        # ax.set_xlabel("$x_1$", labelpad=-10)
+        # ax.set_ylabel("$x_2$", labelpad=-10)
+        # ax.set_zlabel("$x_3$", labelpad=-10)
+        ax.set_xticklabels([])
+        ax.set_yticklabels([])
+
+        plt.tight_layout(pad=0.05)
+        plt.savefig(os.path.join(fig_dir, "C.pdf"))
+        plt.show()
 
     if do_plot_data:
         all_ys = np.vstack(ys)
@@ -766,8 +780,8 @@ if __name__ == "__main__":
                             do_plot_x_2d=False,
                             do_plot_sigmasq=False,
                             do_plot_similarity=False,
-                            do_plot_cluster_embedding=False,
-                            do_plot_cluster_locations=True,
+                            do_plot_cluster_embedding=True,
+                            do_plot_cluster_locations=False,
                             do_plot_data=False)
 
     # heldout_neuron_identification()

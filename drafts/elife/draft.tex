@@ -66,35 +66,6 @@
 \subsection*{A probabilistic framework that combines information across
   trials to learn canonical dynamics}
 
-\begin{figure}[ht]
-\centering%
-\includegraphics[width=6in]{figures/figure1} 
-\caption{A schematic of the hierarchical model for combining
-  information across multiple worms in order to learn a shared
-  dynamical system for \celegans.  \textbf{a.}~All worms share a
-  canonical dynamics library. Here, we have three dynamics functions
-  (blue, red, gold), each of which is a simple linear mapping from
-  $x_t \in \reals^2$ to $x_{t+1} \in \reals^2$.  The recurrent model
-  assigns probabilities to the different dynamics functions based on
-  the current location in $x$-space.  \textbf{b.}~The worms also share
-  an emission matrix, $C$, which can be viewed as an embedding of
-  neurons in latent space.  \textbf{c.}~Each worm has its own dynamics
-  library, which allows for slight deviations from the canonical
-  dynamics.  \textbf{d.}~The model segments neural activity into a
-  sequence of discrete states~$z_{t} \in \{1, 2, 3\}$, which index
-  into the dynamics library.  \textbf{e.}~The discrete states specify
-  the dynamics that are used to propagate the continuous latent
-  states~$x_t$ forward in time. Here, the two dimensional latent
-  states are colored according to the instantaneous discrete
-  state. \textbf{f.}~The observed neural activity is a linear
-  projection of the underlying continuous latent states.  On any given
-  trial, we observe only a fraction of all the neurons.  The
-  hierarchical model combines these partial recordings to infer the
-  underlying states, the dynamics libraries, and the shared neural
-  embedding. }
-\label{fig:model}
-\end{figure}
-
 We seek a parsimonious characterization of the dynamics of neural
 activity in the head ganglia of \celegans. Recent advances in optical
 imaging offer simultaneous recordings of most of the head ganglia
@@ -124,6 +95,37 @@ recording. Fig.~\ref{fig:model}a illustrates this type of data. The
 three panels represent recordings from three separate worms, and the
 rows correspond to different neuron labels.  Neural activity is
 measured for only a subset of neurons in each worm.
+
+\begin{figure}[t!]
+\centering%
+\includegraphics[width=6in]{figures/figure1} 
+\caption{
+  % A schematic of the hierarchical model for combining
+  % information across multiple worms in order to learn a shared
+  % dynamical system for \celegans.  \textbf{a.}~All worms share a
+  % canonical dynamics library. Here, we have three dynamics functions
+  % (blue, red, gold), each of which is a simple linear mapping from
+  % $x_t \in \reals^2$ to $x_{t+1} \in \reals^2$.  The recurrent model
+  % assigns probabilities to the different dynamics functions based on
+  % the current location in $x$-space.  \textbf{b.}~The worms also share
+  % an emission matrix, $C$, which can be viewed as an embedding of
+  % neurons in latent space.  \textbf{c.}~Each worm has its own dynamics
+  % library, which allows for slight deviations from the canonical
+  % dynamics.  \textbf{d.}~The model segments neural activity into a
+  % sequence of discrete states~$z_{t} \in \{1, 2, 3\}$, which index
+  % into the dynamics library.  \textbf{e.}~The discrete states specify
+  % the dynamics that are used to propagate the continuous latent
+  % states~$x_t$ forward in time. Here, the two dimensional latent
+  % states are colored according to the instantaneous discrete
+  % state. \textbf{f.}~The observed neural activity is a linear
+  % projection of the underlying continuous latent states.  On any given
+  % trial, we observe only a fraction of all the neurons.  The
+  % hierarchical model combines these partial recordings to infer the
+  % underlying states, the dynamics libraries, and the shared neural
+  % embedding.
+}
+\label{fig:model}
+\end{figure}
 
 % To model this data, we build on switching linear dynamical systems
 % (SLDS) \citep{chang1978state, ackerson1970state, hamilton1990analysis,
@@ -193,8 +195,11 @@ ameliorate this concern by lessening the penalty on observations that
 do not quite match the dynamics of the current regime.  We achieve
 this robustness by replacing the standard Gaussian noise model with a
 multivariate-t distribution~\citep{lange1989robust}.  The heavy tails
-of this distribution permit outliers and account for some of the model
-misspecification.
+of this distribution Fig.~\ref{fig:model}e compares a multivariate-t
+distribution to a Gaussian with the same mean; though they have
+the same covariance shape, the tails of the robust model fall off
+more slowly than those of the Gaussian, allowing for outliers and a
+degree of model misspecification. 
 
 % Hierarchical model
 The third component of our framework is a \emph{hierarchical} model
@@ -210,23 +215,96 @@ worm-to-worm differences.  For example, the neural activitiy may have
 larger variance in some recordings than in others due to different
 levels of expression of the fluorescent protein.  We allow for this by
 having a separate variance for each worm and neuron, as shown in
-Fig.~\ref{fig:model}f.  More importantly, the dynamics of neural
+Fig.~\ref{fig:model}g.  More importantly, the dynamics of neural
 activity may be slightly different from worm to worm.  We account for
 this by introducing a canonical library of dynamical regimes
-(Fig.~\ref{fig:model}e) that are shared by all worms as well as a
+(Fig.~\ref{fig:model}f) that are shared by all worms as well as a
 unique library for each individual worm (Fig.~\ref{fig:model}d);
 however, we constrain the per-worm dynamics to be close to the
 canonical dynamics.
 
+% Inference
+We fit the the canonical and per-worm dynamics libraries, the
+parameters of the dynamics and observation noise models, and the
+discrete and continuous latent states with approximate Bayesian
+inference as described in the Supplementary Material. Briefly, we
+separate the problem into two steps: learning the continuous latent
+states and the mapping from continuous latent states to observations,
+then learning the dynamics libraries that govern the continuous latent
+states and the correspdonding discrete state sequences.  Both steps are
+performed with a block Gibbs sampler, leveraging the structure of the
+probabilistic model to perform efficient conditional updates of the
+various parameters. 
 
-\subsection*{Emission models reveal clusters of neurons and aid in identification}
+\subsection*{Emission model aids in identification and reveals clusters of neurons}
 
-\begin{figure}[t]
+\begin{figure}[t!]
 \centering%
 \includegraphics[width=6in]{figures/figure2} 
 \caption{}
 \label{fig:emissions}
 \end{figure}
+
+The parameters of the learned model offer novel insights into the
+structure of neural activity in the head ganglia that can only be
+obtained by pooling information across many partial recordings.  With
+this aggregated information, we can smooth noisy observations and
+predict the activity of unobserved neurons. \citet{kato2015global}
+used a smoothing procedure to estimate temporal principal components.
+By contrast, we fit our model directly to the first-order differences
+in calcium fluorescence; our only preprocessing step is to correct for
+photo-bleaching. Fig~\ref{fig:emissions}a show our results for the first
+of the five worms in this dataset. We see that the model smooths out
+noise in the observed activity and, moreover, makes predictions about
+the activity of neurons that could not be identified in this worm.
+
+The predicted activity is based on the correlations between neurons
+learned from many recordings.  These predictions are a useful aid for
+identifying unlabeled neurons.  For example, we see that
+\textsf{SMBDL} was not found in the first worm
+(Fig.~\ref{fig:emissions}a). If the activity of one of the unlabeled
+neurons closely matches the model's predictions for \textsf{SMBDL},
+then this provides some evidence in favor of assigning it this
+label. We tested this idea by witholding the labels of some
+confidently-identified neurons and comparing their activity to the
+model's predicted activity for all unlabeled neurons.  We measured the
+similarity between the actual and predicted activity and found that
+correct label, or ``candidate,'' tends to be much more similar than
+other incorrect candidates, as summarized in
+Fig.~\ref{fig:emissions}b.  Combined with other side-information, like
+the location of the neuron, this provides a powerful aid for identifying
+neurons.  The more neurons that we can identify, the better we will be
+able to learn about the dynamics of neural activity.
+
+Even though each individual recording contains only a subset of neurons,
+the hierarchical model can still estimate the dimensionality of
+neural activity in the entire head ganglia.  We reserve the last 20\% of
+the data (3.6 min) for testing and estimate the dimensionality
+of neural activity based on the marginal log likelihood the model assigns
+to this held-out data. We find that the test likelihood peaks with a
+ten-dimensional latent state (Fig.~\ref{fig:emissions}c).  Moreover, the likelihood is substantially
+higher in the model that includes per-worm observation variances
+compared to the model with shared variances for all worms. Fig.~\ref{fig:emissions}d
+shows the inferred variance for each worm in the \citet{kato2015global}
+dataset.  Neurons that were not identified are marked with a gray box.
+This shows the extent of the missing data and the need for hierarchical
+modeling.
+
+The linear mapping from latent states to observations reveals clusters
+of similarly tuned neurons.  The mapping maybe viewed as either an $N$
+(neurons) by $D$ (latent dimensions) matrix or as a collection of~$N$
+vectors in $D$-dimensional space, i.e. as an embedding of neurons.
+These two views are shown in Fig.~\ref{fig:emissions}d. We note that
+many vectors point in similar directions, which implies that there are
+groups of correlated neurons.  We clustered the neurons based on the
+cosine similarity between their embedding vecors and found five clusters
+of neurons shown in Fig.~\ref{fig:emissions}f (order of neurons is the same
+as in Fig.~\ref{fig:emissions}a). To make sense of these clusters, we then
+looked at their spatial distribution along the head-to-tail axis of the
+worm's body.  We found that clusters 2-4 correspond to activity closer to
+the head and working backward toward the tail.  The last and largest cluster
+contains many neurons in the nerve ring (location 0.15) \todo{check} as well
+as some posterior neurons. \todo[inline]{discuss functional significance of clusters.}
 
 
 \subsection*{SLDS automatically parse data into discrete states with simple dynamics}

@@ -257,6 +257,83 @@ def plot_observation_variance():
     plt.show()
 
 
+def plot_noise_density(lims=(-3, 3), n_pts=50):
+
+    X, Y = np.meshgrid(np.linspace(lims[0], lims[1], n_pts),
+                     np.linspace(lims[0], lims[1], n_pts))
+    x = np.column_stack((X.ravel(), Y.ravel()))
+
+    mu = np.array([1, 1])
+    sigma = np.array([[1, 0.5],
+                      [0.5, 1]])
+    sigmainv = np.linalg.inv(sigma)
+
+    from scipy.stats import multivariate_normal
+    p_mvn = multivariate_normal(mu, sigma).pdf(x)
+    lp_mvn = multivariate_normal(mu, sigma).logpdf(x)
+
+    # Compute multivariate t density
+    nu = 4
+    D = 2
+    from scipy.special import gammaln
+    lp_mvt = np.zeros(x.shape[0])
+    lp_mvt += gammaln(0.5 * (nu + D))
+    lp_mvt -= (gammaln(0.5 * nu) + 0.5 * D * np.log(nu) + 0.5 * D * np.log(np.pi))
+    lp_mvt -= 0.5 * np.linalg.slogdet(sigma)[1]
+    lp_mvt += -0.5 * (nu + D) * np.log(1 + 1./nu * ((x-mu).dot(sigmainv) * (x-mu)).sum(1))
+    p_mvt = np.exp(lp_mvt)
+
+    dx = (lims[1] - lims[0]) / (n_pts - 1)
+    print(np.sum(p_mvn * dx**2))
+    print(np.sum(p_mvt * dx**2))
+
+    # Get limits
+    # p_max = max(p_mvn.max(), p_mvt.max())
+    # levels = np.linspace(0, p_max, 8)[1:]
+
+    lp_min = min(lp_mvn.min(), lp_mvt.min())
+    lp_max = max(lp_mvn.max(), lp_mvt.max())
+    levels = np.linspace(lp_min, lp_max, 15)[1:]
+    # import ipdb; ipdb.set_trace()
+
+
+    fig = plt.figure(figsize=(1.25, .5))
+    ax = fig.add_subplot(121, aspect="equal")
+
+    from hips.plotting.colormaps import white_to_color_cmap
+    cmap = white_to_color_cmap(colors[3])
+    ax.contourf(X, Y, lp_mvn.reshape(X.shape), levels, cmap=cmap)
+    # ax.contour(X, Y, p_mvn.reshape(X.shape), levels, cmap=cmap)
+    # ax.contour(X, Y, p_mvn.reshape(X.shape), cmap=cmap)
+    ax.plot(lims, [0, 0], ':k', lw=0.5)
+    ax.plot([0, 0], lims, ':k', lw=0.5)
+
+    ax.set_xticklabels([])
+    ax.set_yticklabels([])
+    ax.set_xlim(lims)
+    ax.set_ylim(lims)
+
+    # fig = plt.figure(figsize=(.5, .5))
+    ax = fig.add_subplot(122, aspect="equal")
+
+    # cmap = white_to_color_cmap(colors[4])
+    ax.contourf(X, Y, lp_mvt.reshape(X.shape), levels, cmap=cmap)
+    # ax.contour(X, Y, p_mvt.reshape(X.shape), levels, cmap=cmap)
+    # ax.contour(X, Y, p_mvt.reshape(X.shape), cmap=cmap)
+    ax.plot(lims, [0, 0], ':k', lw=0.5)
+    ax.plot([0, 0], lims, ':k', lw=0.5)
+
+    # ax.set_xlabel('$x_1$', labelpad=-5)
+    # ax.set_ylabel('$x_2$', labelpad=-5)
+    ax.set_xticklabels([])
+    ax.set_yticklabels([])
+    ax.set_xlim(lims)
+    ax.set_ylim(lims)
+
+    plt.tight_layout(pad=0.1)
+    plt.savefig("fig1_noise.pdf")
+    plt.show()
+
 if __name__ == "__main__":
     # Simulate data
     As, bs = make_dynamics_library_2D()
@@ -297,4 +374,5 @@ if __name__ == "__main__":
     # plot_discrete_latent_states()
     # plot_continuous_latent_states()
     # plot_neural_activity()
-    plot_observation_variance()
+    # plot_observation_variance()
+    plot_noise_density()
