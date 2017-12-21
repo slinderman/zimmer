@@ -316,6 +316,76 @@ as some posterior neurons. \todo[inline]{discuss functional significance of clus
 \label{fig:syllables}
 \end{figure}
 
+Having learned a mapping from latent state space to observed activity,
+we can now reason about the dynamics of these continuous latent
+states. Fig.~\ref{fig:syllables}a plots the trajectory of the first
+worm's neural activity in the first three dimensions of the continuous
+state space, color coded by the discrete regime inferred under the
+SLDS.  We see that different regimes correspond to distinct loops
+through latent space.  Compare this with Fig. 4b
+of~\citet{kato2015global}---they achieved a similar result by manually
+segmenting smoothed trajectories in the space spanned by the first
+three principal components.  In contrast, our probabilistic framework
+is automatic, operates on ten-dimensional latent states, and requires
+no additional smoothing.
+
+Moreover, we can use the likelihood of held-out test data to determine
+the number of discrete regimes and assess the value of the robust and
+recurrent model extensions, as shown in Fig.~\ref{fig:syllables}b.
+While the non-robust models with Gaussian dynamics noise achieve
+higher training likelihood, the robust models generalize better to
+test data.  Moreover, the recurrent models provide further improvement
+over the standard Markovian models.  We find that test likelihood is
+maximized with eight latent states, which matches the number manually
+chosen by~\citet{kato2015global}.
+
+Not only does the SLDS find the same number of states, it also finds a
+close correspondence between the manually labeled and inferred states.
+Fig.~\ref{fig:syllables}c shows ten-dimensional latent states and the
+manual and inferred segmentations for a 5.5 minute section of data.
+The manual and inferred states often change at similar times. We also
+see instances where there appears to be a change in continuous state
+dynamics that are identified by the SLDS but missed in the manual
+segmentation (e.g. around $t=700$ seconds).  Fig.~\ref{fig:syllables}d
+quantifies the overlap in states for the first worm and for all worms.
+Many inferred states are in one-to-one correspondence with manually
+labeled states, and the remainder tend to be split between two manual
+states.  This confirms that the SLDS is a useful tool for automatically
+segmenting brain data.
+
+Beyond simply automating a manual process, the SLDS also provides a
+quantitative description of the different states.  In particular, each
+state is associated with a set of linear dynamics.
+Fig.~\ref{fig:syllables}e shows the canonical dynamics associated with
+each of the eight discrete states. The arrows in these vector fields
+show where the continuous state is mapped to under the corresponding
+discrete state (for the first three latent dimensions).  Arrows are
+only drawn at those locations where the discrete state was actually
+employed.  We see that these dynamics capture the rotational patterns
+of the various loops.
+
+We use these dynamics to simulate how brain activity would evolve
+under the different states. Fig.~\ref{fig:syllables}f shows 200
+simulations of state 4 from various starting locations.  Four
+simulations are highlighted in particular, as denoted by the outlined
+circle, triangle, square, and pentagon.  We then map these
+trajectories into the space of neural activity and show how they would
+activate the five clusters shown in Fig.~\ref{fig:emissions}.  We see
+that state 4 corresponds to a pronounced dip followed by a rise in the
+activity of cluster 3, alongside a slow ramp in the activity of
+clusters 1 and 2. Referring back to Fig~\ref{fig:emissions}a, we see
+that cluster 3 consists of \textsf{ALA} and three symmetric pairs of
+neurons (\textsf{ASK}, \textsf{RIV}, and \textsf{SMDV}).  The~\textsf{ASK}
+pair are sensory neurons responsible for initiating local search behavior,
+the \textsf{RIV} pair are polymodal inter- and motor-neurons that specify
+the ventral bias of turns, and the \textsf{SMDV} are motor neurons
+that initiate ventral turns. As state 4 is in close correspondence with
+the ``ventral turn'' state labeled by~\citet{kato2015global}, it makes
+sense that these neurons would be activated.
+
+
+
+
 \subsection*{Recurrent models learn spatially localized states and transition boundaries}
 
 \begin{figure}[t]
