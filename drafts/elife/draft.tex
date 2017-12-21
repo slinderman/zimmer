@@ -395,6 +395,46 @@ sense that these neurons would be activated.
 \label{fig:recurrent}
 \end{figure}
 
+The final and most critical component of the dynamical model for
+neural activity in the head ganglia is the discrete transition
+distribution.  In contrast to standard SLDS, we allow these transition
+probabilities to depend on the location in continuous state space (the
+\emph{recurrent} dependency) as well as the preceding discrete state
+(the \emph{Markovian} dependency).  Fig.~\ref{fig:recurrent}a shows
+the contribution of the Markovian term.  Each cell in this matrix
+denotes the number of transitions from one state to another. We are
+only counting transitions in which the state changes, hence the
+diagonal is zero.  We have permuted the states to emphasize the
+largely feed-forward structure.
+
+Fig.~\ref{fig:recurrent}b shows the strongest entries in this matrix
+in an alternative form.  We have illustrated each state as a node in a
+graph, and labeled the states based on their correspondence with the
+manually labeled states of~\citet{kato2015global} (see
+Fig.~\ref{fig:syllables}d).  This reveals a chain-like transition
+structure in which slow and forward (\textsf{FWD}) crawling are linked
+to reverse (\textsf{REV1}, \textsf{REV2}) and sustained reverse
+(\textsf{REVSUS}) via dorsal turns (\textsf{DT}). From sustained
+reverse crawling, the worm may execute either dorsal or ventral turns
+(\textsf{VT}).
+
+To accurately model these dynamics, the changes must occur at precise
+locations in continuous latent space.  Namely,
+Fig.~\ref{fig:syllables}a shows that the loops tend to start and end
+at the origin, and we rarely see transitions when the continuous
+latent state is far from zero. This manifests in signature duration
+distributions for the various states.  Fig.~\ref{fig:recurrent}c plots
+these distributions for each of the eight states.  Superimposed on
+top, we show the predicted distributions with the recurrent SLDS
+(solid black lines) compared with the predictions of the standard,
+Markovian SLDS (dotted black lines). The Markovian model knows nothing
+of the continuous latent state and implies a geometric duration
+distribution with monotonically decreasing probability. By contrast,
+the recurrent model learns to transition near the origin, which
+gives rise to characteristic duration distributions that closely
+match the empirical distributions. 
+
+
 \subsection*{Oxygen level modulates transition probabilities but not dynamics or emissions}
 
 \begin{figure}[t]
@@ -404,6 +444,7 @@ sense that these neurons would be activated.
 \label{fig:o2}
 \end{figure}
 
+Having demonstrated the utility of 
 
 \clearpage
 
