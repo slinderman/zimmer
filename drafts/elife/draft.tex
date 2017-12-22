@@ -46,8 +46,8 @@
   probabilistic framework aids in neural identification---currently a
   laborious, manual task---and reveals clusters of neurons that are
   similarly tuned in latent state space.  Finally, we find a
-  significant overlap between our inferred modes and the
-  manually-labeled modes of~\citet{kato2015global}
+  significant overlap between our inferred states and the
+  manually-labeled states of~\citet{kato2015global}
   and~\citet{nichols2017global}, which were shown to correspond to
   different behaviors, like forward crawling, reversals, and
   turns. Our methods automatically discover and quantify these
@@ -100,29 +100,33 @@ measured for only a subset of neurons in each worm.
 \centering%
 \includegraphics[width=6in]{figures/figure1} 
 \caption{
-  % A schematic of the hierarchical model for combining
-  % information across multiple worms in order to learn a shared
-  % dynamical system for \celegans.  \textbf{a.}~All worms share a
-  % canonical dynamics library. Here, we have three dynamics functions
-  % (blue, red, gold), each of which is a simple linear mapping from
-  % $x_t \in \reals^2$ to $x_{t+1} \in \reals^2$.  The recurrent model
-  % assigns probabilities to the different dynamics functions based on
-  % the current location in $x$-space.  \textbf{b.}~The worms also share
-  % an emission matrix, $C$, which can be viewed as an embedding of
-  % neurons in latent space.  \textbf{c.}~Each worm has its own dynamics
-  % library, which allows for slight deviations from the canonical
-  % dynamics.  \textbf{d.}~The model segments neural activity into a
-  % sequence of discrete states~$z_{t} \in \{1, 2, 3\}$, which index
-  % into the dynamics library.  \textbf{e.}~The discrete states specify
-  % the dynamics that are used to propagate the continuous latent
-  % states~$x_t$ forward in time. Here, the two dimensional latent
-  % states are colored according to the instantaneous discrete
-  % state. \textbf{f.}~The observed neural activity is a linear
-  % projection of the underlying continuous latent states.  On any given
-  % trial, we observe only a fraction of all the neurons.  The
-  % hierarchical model combines these partial recordings to infer the
-  % underlying states, the dynamics libraries, and the shared neural
-  % embedding.
+  \textit{A probabilistic framework for combining
+  information across multiple worms in order to learn a shared
+  dynamical system for \celegans.}
+  \textbf{a.}~The data consists of observed neural activity collected
+  from many different worms.  In each recording we observe a different
+  subset of labeled neurons in the head ganglia.
+  \textbf{b.}~We model the observed activity as a linear function of
+  an underlying, continuous, and typically low-dimensional latent state,
+  here shown as a two-dimensional signal for each recording.
+  \textbf{c.}~The dynamics of these continuous states are governed by
+  a co-evolving discrete state.
+  \textbf{d.}~These discrete states index into a library of linear
+  dynamics functions for each worm, here shown as maps from~$\reals^2$ to~$\reals^2$.
+  Each dynamics function is selectively used in different regions of
+  continuous latent space, as shown by the different intensities of
+  the vector field.
+  \textbf{e.}~To increase robustness to model misspecification, we
+  use a multivariate-t distribution for the noise in the continuous
+  state updates.
+  \textbf{f.}~Each worm has its own dynamics library, but they are
+  constrained to be close to the shared, canonical library.  This
+  combines information to learn shared structure while also allowing
+  for worm-to-worm variability.
+  \textbf{g.} Likewise, we allow each worm to have its own observation
+  variances to account for individual differences that may arise from,
+  for example, variable levels of fluorescent protein expression.
+  Missing neurons are denoted by gray boxes. 
 }
 \label{fig:model}
 \end{figure}
@@ -239,9 +243,35 @@ various parameters.
 \subsection*{Emission model aids in identification and reveals clusters of neurons}
 
 \begin{figure}[t!]
-\centering%
+\centering
 \includegraphics[width=6in]{figures/figure2} 
-\caption{}
+\caption{ \textit{The mapping from continuous latent states to
+    observations aids in neural identification and reveals clusters of
+    neurons.}
+  \textbf{a.}~The observed neural activity (solid black lines) in the
+  first worm of the \citet{kato2015global} dataset along with the
+  smoothed activity given by the model (blue lines). We use
+  correlations learned across the population to predict the activity
+  of unobserved neurons (those with dotted black lines).
+  \textbf{b.}~These predictions are a useful aid for neural identification.
+  We withheld the labels of a fraction of neurons and measured the similarity
+  between their activity and the models predictions.  The similarity was
+  significantly higher for the correct assignments as compared to incorrect
+  assignments.
+  \textbf{c.}~The probabilistic model offers a principled means of assessing
+  the dimensionality of neural activity, even though only a subset of neurons
+  are labeled on any given trial.  We find that ten latent dimensions yields
+  the highest test likelihood, and that allowing per-worm observation variances
+  yields substantial improvements in test performance.
+  \textbf{d.}~The per-worm variances show that observation noise can
+  vary substantially from one worm to another. Gray squares denote missing
+  neurons.
+  \textbf{e.}~We can view the linear mapping from latent states to observations
+  as either a matrix or as an embedding of neurons.
+  \textbf{f.}~Viewed as an embedding, we see that neurons cluster into
+  correlated groups with similar tuning to the continuous latent state.
+  \textbf{g.}~These groups roughly correspond to neurons at different
+  locations along the worm's body.  }
 \label{fig:emissions}
 \end{figure}
 
@@ -309,10 +339,34 @@ as some posterior neurons. \todo[inline]{discuss functional significance of clus
 
 \subsection*{SLDS automatically parse data into discrete states with simple dynamics}
 
-\begin{figure}[t]
-\centering%
+\begin{figure}[t!]
+\centering
 \includegraphics[width=6in]{figures/figure3} 
-\caption{}
+\caption{ \textit{The hierarchical SLDS decomposes continuous states
+    into segments with simple linear dynamics.}
+  \textbf{a.}~Three dimensions of the inferred continuous latent states
+  for the first worm, color coded by the corresponding discrete latent
+  state.
+  \textbf{b.}~We select the number of discrete states and justify the
+  recurrent and robust extensions by measuring the marginal likelihood
+  of held-out test data. We find that the robust, recurrent model
+  with eight states performs best.
+  \textbf{c.}~The inferred segmentations align with the manual segmentations
+  of~\citet{kato2015global}.
+  \textbf{d.}~Moreover, the inferred states are in close correspodence with
+  the manually labeled states, which were shown to indicate different behaviors.
+  \textbf{e.}~Each discrete state is associated with a canonical set of linear
+  dynamics, which can be viewed as mappings from~$\reals^10$ to~$\reals^10$.
+  We show the mappings for the first three dimensions here, with vectors placed
+  at locations where each state was used.  We see a variety of rotational
+  states that can be combined to yield dynamics like those in~\textbf{a.}.
+  \textbf{f.}~We simulate these linear dynamics from a variety of starting
+  locations for the fourth (green) and highlight four for closer inspection.
+  \textbf{g.}~These four trajectories give rise to different activations of
+  the neural clusters. We see see a dip then rise in cluster 3, which consists
+  of neurons related to ventral turns, consistent with the manual labeling
+  of the green state in~\textbf{d}.
+}
 \label{fig:syllables}
 \end{figure}
 
@@ -388,10 +442,23 @@ sense that these neurons would be activated.
 
 \subsection*{Recurrent models learn spatially localized states and transition boundaries}
 
-\begin{figure}[t]
-\centering%
+\begin{figure}[t!]
+\centering
 \includegraphics[width=6in]{figures/figure4} 
-\caption{}
+\caption{ \textit{Discrete state transitions show a non-Markovian,
+    chain-like structure.}  \textbf{a.}~Counts of inferred transitions
+  from one state to another. The states are permuted to emphasize the
+  feed-forward structure.  \textbf{b.}~An alternative view of the
+  transitions; each state is a node in a graph and edges denote
+  high-probability transitions.  This shows transitions between
+  forward and reverse crawling linked by dorsal and ventral turns.
+  \textbf{c.}~The standard SLDS assumes Markovian transitions, which
+  imply a geometric distribution of state durations (dotted black
+  lines), but Fig.~\ref{fig:syllables} clearly demonstrates that state
+  transitions occur near the origin.  The recurrent SLDS incorporates
+  this dependency and generates state durations (solid black lines)
+  that are a much better fit to those inferred from the data (colored
+  bars).  }
 \label{fig:recurrent}
 \end{figure}
 
@@ -437,14 +504,82 @@ match the empirical distributions.
 
 \subsection*{Oxygen level modulates transition probabilities but not dynamics or emissions}
 
-\begin{figure}[t]
-\centering%
+\begin{figure}[t!]
+\centering
 \includegraphics[width=6in]{figures/figure5} 
-\caption{}
+\caption{\textit{Incorporating exogenous factors like oxygen level
+    into the dynamics model yield differential responses in worms from
+    different genetic strains and developmental stages.}
+  \textbf{a.}~The observed neurons and their inferred observation variances
+  for each of the 41 worms in the~\citet{nichols2017global} dataset.
+  \textbf{b.}~Worms of different genetic strains (N2, npr1) and developmental
+  stages (pre-lethargus, lethargus) exhibit different levels of overall
+  state usage, with blue and yellow much more likely in the lethargus stage.
+  \textbf{c.}~As above, the inferred states closely match the manually
+  labeled states of~\citet{nichols2017global}, with blue and yellow mapping
+  onto the forward (\textsf{Fwd}) and quiescent (\textsf{Q}) states.
+  \textbf{d.}~We extended the SLDS to allow exogenous factors like oxygen
+  level influence discrete transition probabilities.
+  \textbf{e., f.}~Upon fitting the model, we find that oxygen has a limited
+  effect on N2 worms and a much stronger effect on npr1 worms. In npr1 worms,
+  increasing the oxygen level decreases the probability of quiescent and
+  forward states and elicits reversals and turns.
+}
 \label{fig:o2}
 \end{figure}
 
-Having demonstrated the utility of 
+The preceding results demonstrated the efficacy of hierarchical,
+recurrent, and robust SLDS for learning interpretable dynamics of
+neural activity from the noisy, partial recordings
+of~\citet{kato2015global}.  We now turn to the dataset studied
+in~\citet{nichols2017global}, which contains many more worms with
+roughly the same number of neurons per recording but is complicated by
+additional factors.  First, there are two strains of worms (N2 and
+npr-1) at two different stages of development (pre-lethargus and
+lethargus); second, the oxygen level is manipulated over the course of
+the recordings to elicit different responses.  Here we show how our
+framework can be extended to study the effects of these manipulations.
+
+Fig.~\ref{fig:o2}a shows which neurons were labeled in each of the
+recordings along with the inferred observation variance. There are 41
+worms, roughly ten from each strain and developmental stage
+combination (N2 + pre-lethargus, N2 + lethargus, npr1 + pre-lethargus,
+and npr1 + lethargus). Some neurons are consistently identified in
+almost all worms; others are identified in only a handful.  As before,
+our hierarchical framework combines all this information.
+
+Upon fitting our model, we immediately see a difference in the overall
+usage of the eight states (Fig.~\ref{fig:o2}b). The worms in the
+lethargus stage predominantly use the blue and yellow states.  Again,
+we found a close correspondence between our inferred states and the
+manually labeled states of~\citet{nichols2017global}
+(Fig.~\ref{fig:o2}c). Here, blue and yellow both map strongly onto the
+quiescent (\textsf{Q}) state. This is consistent with the
+characterization of the lethargus stage---at this stage, worms exhibit
+much less crawling behavior. The pre-lethargus worms execute a broader
+variety of behaviors, including reversals (\textsf{Rev.}) and dorsal
+and ventral turns  (\textsf{DT} and \textsf{VT}, respectively). 
+
+A key finding of~\citet{nichols2017global} was that increasing the
+oxygen level can elicit activity in lethargus npr1 worms but not in
+lethargus N2 worms. We can quantify this effect with our models by
+including oxygen level as an exogenous input.  Fig.~\ref{fig:o2}d
+shows how the graphical model of the recurrent SLDS changes: now the
+discrete state at time~$t$ (red circle) depends on the preceding discrete
+state, the preceding continuous state, and the current oxygen level.
+\todo[inline]{consider alternative models in which oxygen level
+  influences continuous states and observations?}
+
+Fig.~\ref{fig:o2}e and~\ref{fig:o2}f show the inferred effect of
+oxygen level for each of the four strain/developmental stage pairs.
+As predicted, only the npr1 worms show a much larger response to
+oxygen. Increasing the oxygen level increases the probability
+of reversals and turning related states (red, orange, purple) and
+decreases the probability of forward and quiescent (blue, yellow)
+states. Somewhat surprisingly, the magnitude of the effect is
+comparable for both pre-lethargus and lethargus npr1 worms, even
+though the baseline level of reversals and turns is much higher in
+the pre-lethargus worms. 
 
 \clearpage
 
