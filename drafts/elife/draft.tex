@@ -215,7 +215,7 @@ missing data that must be inferred.  We handle this by integrating
 over possible activity of the missing neurons, analytically
 marginalizing out this missing data.  The second challenge is
 combining information from many recordings while also allowing for
-worm-to-worm differences.  For example, the neural activitiy may have
+worm-to-worm differences.  For example, the neural activity may have
 larger variance in some recordings than in others due to different
 levels of expression of the fluorescent protein.  We allow for this by
 having a separate variance for each worm and neuron, as shown in
@@ -235,7 +235,7 @@ inference as described in the Supplementary Material. Briefly, we
 separate the problem into two steps: learning the continuous latent
 states and the mapping from continuous latent states to observations,
 then learning the dynamics libraries that govern the continuous latent
-states and the correspdonding discrete state sequences.  Both steps are
+states and the corresponding discrete state sequences.  Both steps are
 performed with a block Gibbs sampler, leveraging the structure of the
 probabilistic model to perform efficient conditional updates of the
 various parameters. 
@@ -295,7 +295,7 @@ identifying unlabeled neurons.  For example, we see that
 (Fig.~\ref{fig:emissions}a). If the activity of one of the unlabeled
 neurons closely matches the model's predictions for \textsf{SMBDL},
 then this provides some evidence in favor of assigning it this
-label. We tested this idea by witholding the labels of some
+label. We tested this idea by withholding the labels of some
 confidently-identified neurons and comparing their activity to the
 model's predicted activity for all unlabeled neurons.  We measured the
 similarity between the actual and predicted activity and found that
@@ -327,7 +327,7 @@ vectors in $D$-dimensional space, i.e. as an embedding of neurons.
 These two views are shown in Fig.~\ref{fig:emissions}d. We note that
 many vectors point in similar directions, which implies that there are
 groups of correlated neurons.  We clustered the neurons based on the
-cosine similarity between their embedding vecors and found five clusters
+cosine similarity between their embedding vectors and found five clusters
 of neurons shown in Fig.~\ref{fig:emissions}f (order of neurons is the same
 as in Fig.~\ref{fig:emissions}a). To make sense of these clusters, we then
 looked at their spatial distribution along the head-to-tail axis of the
@@ -353,7 +353,7 @@ as some posterior neurons. \todo[inline]{discuss functional significance of clus
   with eight states performs best.
   \textbf{c.}~The inferred segmentations align with the manual segmentations
   of~\citet{kato2015global}.
-  \textbf{d.}~Moreover, the inferred states are in close correspodence with
+  \textbf{d.}~Moreover, the inferred states are in close correspondence with
   the manually labeled states, which were shown to indicate different behaviors.
   \textbf{e.}~Each discrete state is associated with a canonical set of linear
   dynamics, which can be viewed as mappings from~$\reals^10$ to~$\reals^10$.
