@@ -708,14 +708,14 @@ if __name__ == "__main__":
         do_plot_dynamics_3d=False,
         do_plot_dynamics_2d=False,
         do_plot_state_overlap=False,
-        do_plot_state_usage=False,
+        do_plot_state_usage=True,
         do_plot_transition_matrices=False,
         do_plot_simulated_trajs=False,
         do_plot_recurrent_weights=False,
         do_plot_x_at_changepoints=False,
         do_plot_latent_trajectories_vs_time=False,
         do_plot_duration_histogram=False,
-        do_plot_driven_trans_matrices=True
+        do_plot_driven_trans_matrices=False
     )
 
     # Rolling predictions

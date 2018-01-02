@@ -834,9 +834,7 @@ def plot_state_usage_by_worm_matrix(z_finals,
     fig = plt.figure(figsize=(3, 2))
     ax = fig.add_subplot(111, aspect="auto")
     im = ax.imshow(usage.T, cmap="Greys")
-    ax.set_ylabel("State")
-    ax.set_yticks([0, Kmax-1])
-    ax.set_yticklabels((ax.get_yticks() + 1).astype(int))
+    ax.set_yticks([])
     ax.set_xlabel("Worm")
     # ax.set_xticks(np.arange(N_worms))
     ax.set_xticklabels((ax.get_xticks() + 1).astype(int))
@@ -848,8 +846,8 @@ def plot_state_usage_by_worm_matrix(z_finals,
                aspect="auto")
     lax.set_xticks([])
     lax.set_yticks([])
-
-    divider = make_axes_locatable(ax)
+    lax.set_ylabel("State")
+    
     cax = divider.append_axes("right", size="5%", pad=0.05)
     plt.colorbar(im, cax=cax)
 
