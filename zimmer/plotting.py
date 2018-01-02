@@ -136,9 +136,9 @@ def plot_3d_continuous_states(x, z, colors,
                 color=colors[z[cp_start]],
                 **kwargs)
 
-    # ax.set_xlabel("$x_1$", labelpad=-10)
-    # ax.set_ylabel("$x_2$", labelpad=-10)
-    # ax.set_zlabel("$x_3$", labelpad=-10)
+    ax.set_xlabel("dim {}".format(inds[0]+1), labelpad=-18, fontsize=6)
+    ax.set_ylabel("dim {}".format(inds[1]+1), labelpad=-18, fontsize=6)
+    ax.set_zlabel("dim {}".format(inds[2]+1), labelpad=-18, fontsize=6)
     ax.set_xticklabels([])
     ax.set_yticklabels([])
     ax.set_zticklabels([])
@@ -148,7 +148,7 @@ def plot_3d_continuous_states(x, z, colors,
         ax.set_zlim(-lim, lim)
 
     if title is not None:
-        ax.set_title(title)
+        ax.set_title(title, fontsize=8)
 
     plt.tight_layout(pad=0.1)
 
@@ -298,10 +298,10 @@ def plot_vector_field_3d(ii, z, x, perm_dynamics_distns, colors,
                          ax=None, lims=(-3,3), N_plot=500,
                          **kwargs):
 
-    qargs = dict(arrow_length_ratio=0.5,
+    qargs = dict(arrow_length_ratio=0.66,
                  alpha=1.0,
-                 length=1.5,
-                 lw=1,
+                 length=2,
+                 lw=.5,
                  pivot="middle",)
     qargs.update(kwargs)
 
@@ -332,9 +332,9 @@ def plot_vector_field_3d(ii, z, x, perm_dynamics_distns, colors,
               color=colors[ii],
               **qargs)
 
-    ax.set_xlabel('$x_1$', labelpad=-10)
-    ax.set_ylabel('$x_2$', labelpad=-10)
-    ax.set_zlabel('$x_3$', labelpad=-10)
+    ax.set_xlabel('dim 1', labelpad=-18, fontsize=6)
+    ax.set_ylabel('dim 2', labelpad=-18, fontsize=6)
+    ax.set_zlabel('dim 3', labelpad=-18, fontsize=6)
     ax.set_xticklabels([])
     ax.set_yticklabels([])
     ax.set_zticklabels([])
@@ -349,19 +349,18 @@ def plot_vector_field_3d(ii, z, x, perm_dynamics_distns, colors,
 def plot_3d_dynamics(dynamics_distns, z, x,
                      colors=None,
                      lim=None,
-                     figsize=(2.7, 2.7),
                      filepath=None):
     colors = default_colors if colors is None else colors
     for k in range(len(dynamics_distns)):
-        fig = plt.figure(figsize=figsize)
+        fig = plt.figure(figsize=(1.4, 1.5))
         # ax = fig.add_subplot(111, projection='3d')
-        ax = create_axis_at_location(fig, 0.025, 0.025, 2.55, 2.55, projection="3d")
+        ax = create_axis_at_location(fig, 0.05, 0.05, 1.3, 1.3, projection="3d")
 
         plot_vector_field_3d(k, z, x, dynamics_distns, colors,
-                             N_plot=200,
+                             N_plot=50,
                              ax=ax,
                              lims=(-lim, lim), )
-        ax.set_title("State {}".format(k+1))
+        ax.set_title("state {}".format(k+1), fontsize=6)
 
         if filepath is not None:
             if filepath.endswith('.pdf'):
@@ -600,6 +599,7 @@ def plot_latent_trajectories_vs_time(xs, zs,
                                      plot_slice=(0, 500),
                                      alpha=0.5,
                                      title=None,
+                                     show_xticks=True,
                                      basename="x_segmentation",
                                      results_dir=None):
 
@@ -610,8 +610,8 @@ def plot_latent_trajectories_vs_time(xs, zs,
         x = x / (2 * lim)
         D_latent  = x.shape[1]
 
-        plt.figure(figsize=(6, 4))
-        ax = plt.subplot(111)
+        fig = plt.figure(figsize=(2.4, 1.2))
+        ax = create_axis_at_location(fig, 0.3, 0.3, 2.0, .7)
 
         # Plot z in background
         offset = 0
@@ -624,20 +624,30 @@ def plot_latent_trajectories_vs_time(xs, zs,
 
                 # Plot x
         for d in range(D_latent):
-            ax.plot(x[:, d] - d - 0.5, '-k', lw=2)
-            ax.plot(plot_slice, (-d - 0.5) * np.ones(2), ':k', lw=1)
+            ax.plot(x[:, d] - d - 0.5, '-k', lw=.5)
+            # ax.plot(plot_slice, (-d - 0.5) * np.ones(2), ':k', lw=1)
 
         ax.set_xlim(plot_slice)
-        ax.set_xlabel("Time")
-        if title is None:
-            ax.set_title("segmentation of $x$ (Worm {})".format(i+1))
+        ax.tick_params(labelsize=4)
+        if show_xticks:
+            xticks = np.linspace(plot_slice[0], plot_slice[1], 4)
+            ax.set_xticks(xticks)
+            ax.set_xticklabels(xticks / 60 / 3)
+            ax.set_xlabel("time (min)", fontsize=6)
         else:
-            ax.set_title(title + " (Worm {})".format(i+1))
+            ax.set_xticks([])
+
+        if title is None:
+            ax.set_title("segmentation of $x$ (worm {})".format(i+1), fontsize=8)
+        else:
+            ax.set_title(title + " (worm {})".format(i+1), fontsize=8)
 
         ax.set_yticks(-1 * np.arange(D_latent) - 0.5)
-        ax.set_yticklabels(["$x_{{{}}}$".format(d + 1) for d in range(D_latent)])
+        ax.set_yticklabels(1 + np.arange(D_latent))
+        # ax.set_yticklabels(["$x_{{{}}}$".format(d + 1) for d in range(D_latent)])
+        ax.set_ylabel("latent dimension", fontsize=6)
         ax.set_ylim(-D_latent, 0)
-        plt.tight_layout()
+        # plt.tight_layout(pad=0.05)
 
         if results_dir is not None:
             plt.savefig(os.path.join(results_dir, basename + "_{}.pdf".format(i)))
@@ -1089,7 +1099,7 @@ def plot_simulated_trajectories2(k, x_trajs, x_sims, C, d, T,
                                 colors=None,
                                 results_dir=None,
                                 lim=3,
-                                ylim=.15,
+                                ylim=.1,
                                 alpha=0.25,
                                 markers=('o', '^',  's', 'p', 'h')):
     """
@@ -1099,15 +1109,15 @@ def plot_simulated_trajectories2(k, x_trajs, x_sims, C, d, T,
     N_clusters, D = C.shape
 
     # Find and plot the partial trajectories of this state
-    fig = plt.figure(figsize=(5.5, 3))
+    fig = plt.figure(figsize=(3, 1.5))
     gs = gridspec.GridSpec(2, 4, height_ratios=[2., 1.])
     ax = fig.add_subplot(gs[0, 0], projection="3d", aspect="equal")
 
     for x_traj in x_trajs:
         ax.plot(x_traj[:1, 0], x_traj[:1, 1], x_traj[:1, 2],
-                'o', markersize=3, markeredgecolor='k', mew=1, color=colors[k], alpha=alpha)
+                'o', markersize=2, markeredgecolor='k', mew=.5, color=colors[k], alpha=alpha)
         ax.plot(x_traj[:, 0], x_traj[:, 1], x_traj[:, 2],
-                 '-', lw=1.0, color=colors[k], alpha=alpha)
+                 '-', lw=0.5, color=colors[k], alpha=alpha)
 
     # for i,c_unnorm in enumerate(C):
     #     c = c_unnorm / np.linalg.norm(c_unnorm)
@@ -1117,13 +1127,13 @@ def plot_simulated_trajectories2(k, x_trajs, x_sims, C, d, T,
     #
 
     for i, x_sim in enumerate(x_sims):
-        plt.plot(x_sim[:, 0], x_sim[:, 1], x_sim[:, 2], '-', color='k', lw=1.5)
+        plt.plot(x_sim[:, 0], x_sim[:, 1], x_sim[:, 2], '-', color='k', lw=1)
         plt.plot(x_sim[:1, 0], x_sim[:1, 1], x_sim[:1, 2], 'o',
                  marker=markers[i % len(markers)],
                  markerfacecolor=colors[k],
                  markeredgecolor='k',
                  markeredgewidth=1,
-                 markersize=5,
+                 markersize=4,
                  alpha=0.75)
 
     ax.set_xlim(-lim, lim)
@@ -1136,28 +1146,28 @@ def plot_simulated_trajectories2(k, x_trajs, x_sims, C, d, T,
     ax.set_xticklabels([])
     ax.set_yticklabels([])
     ax.set_zticklabels([])
-    ax.set_xlabel("$x_1$", fontsize=6, labelpad=-15)
-    ax.set_ylabel("$x_2$", fontsize=6, labelpad=-15)
-    ax.set_zlabel("$x_3$", fontsize=6, labelpad=-15)
+    ax.set_xlabel("dim 1", fontsize=4, labelpad=-18)
+    ax.set_ylabel("dim 2", fontsize=4, labelpad=-18)
+    ax.set_zlabel("dim 3", fontsize=4, labelpad=-18)
 
     def _plot_2d_trajectories(ax, dims, legend=False):
         ax.plot([-lim, lim], [0, 0], ':k', lw=0.5)
         ax.plot([0, 0], [-lim, lim], ':k', lw=0.5)
         for x_traj in x_trajs:
             ax.plot(x_traj[0, dims[0]], x_traj[0, dims[1]],
-                    'o', markersize=3, markeredgecolor='k', mew=1, color=colors[k], alpha=alpha)
+                    'o', markersize=2, markeredgecolor='k', mew=.5, color=colors[k], alpha=alpha)
             ax.plot(x_traj[:, dims[0]], x_traj[:, dims[1]],
-                    ls='-', lw=1.0, color=colors[k], alpha=alpha)
+                    ls='-', lw=0.5, color=colors[k], alpha=alpha)
 
         for i, x_sim in enumerate(x_sims):
-            plt.plot(x_sim[:, dims[0]], x_sim[:, dims[1]], '-', color='k', lw=1.5)
+            plt.plot(x_sim[:, dims[0]], x_sim[:, dims[1]], '-', color='k', lw=1.)
             plt.plot(x_sim[0, dims[0]], x_sim[0, dims[1]],
                      ls='',
                      marker=markers[i % len(markers)],
                      markerfacecolor=colors[k],
                      markeredgecolor='k',
                      markeredgewidth=1,
-                     markersize=5,
+                     markersize=4,
                      alpha=0.75,
                      label=i+1)
 
@@ -1167,19 +1177,20 @@ def plot_simulated_trajectories2(k, x_trajs, x_sims, C, d, T,
         ax.set_yticks([-lim, -lim / 2, 0, lim / 2, lim])
         ax.set_xticklabels([])
         ax.set_yticklabels([])
-        ax.set_xlabel("$x_{}$".format(dims[0]+1), fontsize=6, labelpad=-1)
-        ax.set_ylabel("$x_{}$".format(dims[1]+1), fontsize=6, labelpad=-1)
+        ax.set_xlabel("dim {}".format(dims[0]+1), fontsize=5, labelpad=-3)
+        ax.set_ylabel("dim {}".format(dims[1]+1), fontsize=5, labelpad=-3)
 
         if legend:
             ax.legend(loc="lower right",
-                      fontsize=6,
+                      fontsize=4,
                       labelspacing=.15,
                       borderpad=.1,
                       handletextpad=.1)
 
     for i, dims in enumerate([(0,1), (0,2), (1,2)]):
         ax = fig.add_subplot(gs[0,i+1], aspect="equal")
-        _plot_2d_trajectories(ax, dims, legend=(i == 0))
+        # _plot_2d_trajectories(ax, dims, legend=(i == 0))
+        _plot_2d_trajectories(ax, dims, legend=False)
 
     # Plot the neural activity
     for i, x_sim in enumerate(x_sims):
@@ -1188,8 +1199,8 @@ def plot_simulated_trajectories2(k, x_trajs, x_sims, C, d, T,
         t_sim = np.arange(x_sim.shape[0]) / 3.0
 
         for c in range(N_clusters):
-            ax.plot([0, T / 3.], np.ones(2) * c * 2 * ylim, ':k', lw=1)
-            ax.plot(t_sim, y_sim[:, c] + c * 2 * ylim, '-', color=colors[k], lw=2)
+            ax.plot([0, T / 3.], np.ones(2) * c * 2 * ylim, ':k', lw=.5)
+            ax.plot(t_sim, y_sim[:, c] + c * 2 * ylim, '-', color=colors[k], lw=1)
 
         # Plot the marker for convenience
         ax.plot(T / 3.0 - 1, 0,
@@ -1197,24 +1208,86 @@ def plot_simulated_trajectories2(k, x_trajs, x_sims, C, d, T,
                 markerfacecolor=colors[k],
                 markeredgecolor='k',
                 markeredgewidth=1,
-                markersize=6,
+                markersize=4,
                 label=i + 1)
 
-        ax.set_ylabel("cluster activity", fontsize=6)
+        if i == 0:
+            ax.set_ylabel("neural activity\nper cluster", fontsize=6)
+            ax.set_yticks(np.arange(N_clusters) * 2 * ylim)
+            ax.set_yticklabels(np.arange(N_clusters) + 1, size=5)
+        else:
+            ax.set_yticks([])
         ax.set_ylim((2 * N_clusters - 1) * ylim, -ylim)
-        ax.set_yticks(np.arange(N_clusters) * 2 * ylim)
-        ax.set_yticklabels(np.arange(N_clusters) + 1, size=6)
-        ax.set_xlabel("time (sec)", fontsize=6)
-        ax.set_xticks(np.linspace(0, T /3.0, 5))
-        ax.set_xticklabels(np.linspace(0, T /3.0, 5), size=6)
-        ax.set_xlim(0, T/3.0)
-        ax.set_title("Trajectory {}".format(i+1))
 
-    plt.tight_layout(pad=.3)
+        ax.set_xlabel("time (sec)", fontsize=6)
+        ax.set_xticks(np.linspace(0, T/3.0, 3))
+        ax.set_xticklabels(np.linspace(0, T/3.0, 3), size=5)
+        ax.set_xlim(0, T/3.0)
+        ax.set_title("trajectory {}".format(i+1), fontsize=6, y=.9)
+
+    plt.tight_layout(pad=.2)
 
     if results_dir is not None:
         plt.savefig(os.path.join(results_dir, "cluster_activity_{}.pdf".format(k)))
         # plt.savefig(os.path.join(results_dir, "cluster_activity_{}.png".format(k)), dpi=300)
+
+
+def plot_simulated_trajectories3(k, x_sims, C, d, T,
+                                colors=None,
+                                results_dir=None,
+                                ylim=.1,
+                                ):
+    """
+    Similar to above but with only neural activity
+    """
+    colors = default_colors if colors is None else colors
+    N_clusters, D = C.shape
+
+    # Find and plot the partial trajectories of this state
+    fheight = .7 if (k > 0 and k < 7) else .95
+    fig = plt.figure(figsize=(3, fheight))
+    left = 0.4
+    pwidth = .65
+    width = .55
+    bottom = .25 if k == 7 else 0.05
+    height = .6
+
+
+    # Plot the neural activity
+    for i, x_sim in enumerate(x_sims):
+        # ax = fig.add_subplot(gs[0, i])
+        ax = create_axis_at_location(fig, left + i * pwidth, bottom, width, height)
+        y_sim = x_sim.dot(C.T) + d
+        t_sim = np.arange(x_sim.shape[0]) / 3.0
+
+        for c in range(N_clusters):
+            ax.plot([0, T / 3.], np.ones(2) * c * 2 * ylim, ':k', lw=.5)
+            ax.plot(t_sim, y_sim[:, c] + c * 2 * ylim, '-', color=colors[k], lw=1)
+
+        if i == 0:
+            ax.set_ylabel("neural activity\nper cluster", fontsize=6)
+            ax.set_yticks(np.arange(N_clusters) * 2 * ylim)
+            ax.set_yticklabels(np.arange(N_clusters) + 1, size=5)
+        else:
+            ax.set_yticks([])
+        ax.set_ylim((2 * N_clusters - 1) * ylim, -ylim)
+
+        if k == 7:
+            ax.set_xlabel("time (sec)", fontsize=6, labelpad=0)
+            ax.set_xticks([0, 5, 10])
+        else:
+            ax.set_xticks([])
+
+        ax.set_xlim(0, 10)
+        ax.tick_params(labelsize=5)
+
+        if k == 0:
+            ax.set_title("sample {}".format(i+1), fontsize=6)
+
+    # plt.tight_layout(pad=.1)
+
+    if results_dir is not None:
+        plt.savefig(os.path.join(results_dir, "neural_samples_{}.pdf".format(k)))
 
 
 def plot_recurrent_transitions(trans_distn, xs, zs,

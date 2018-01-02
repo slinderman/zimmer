@@ -294,8 +294,6 @@ def plot_noise_density(lims=(-3, 3), n_pts=50):
     lp_min = min(lp_mvn.min(), lp_mvt.min())
     lp_max = max(lp_mvn.max(), lp_mvt.max())
     levels = np.linspace(lp_min, lp_max, 15)[1:]
-    # import ipdb; ipdb.set_trace()
-
 
     fig = plt.figure(figsize=(1.25, .5))
     ax = fig.add_subplot(121, aspect="equal")
