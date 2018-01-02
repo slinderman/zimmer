@@ -1,0 +1,15 @@
+.idea
+.DS_Store
+*.aux
+*.bbl
+*.blg
+*.fdb_latexmk
+*.fls
+*.log
+*.out
+*.zip
+*.bak
+*.bkp
+*.ipynb_checkpoints
+*~
+__pycache__

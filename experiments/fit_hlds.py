@@ -11,6 +11,7 @@ from functools import partial
 import matplotlib.pyplot as plt
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from hips.plotting.colormaps import gradient_cmap
+from hips.plotting.layout import create_axis_at_location
 import seaborn as sns
 sns.set_style("white")
 sns.set_context("paper")
@@ -57,7 +58,7 @@ assert os.path.exists(results_dir)
 fig_dir = os.path.join(results_dir, "figures")
 
 N_worms = 5
-N_clusters = 5
+N_clusters = 6
 
 
 def cached(results_name):
@@ -122,6 +123,19 @@ def load_data(include_unnamed=True):
 
     return ys, masks, z_trues, z_key, neuron_names
 
+
+def comput_xcorr(ys, masks):
+    N = D_obs
+    xcorr = np.nan * np.ones((N, N))
+    for n1 in range(N):
+        for n2 in range(n1+1, N):
+            valid = [(np.all(ms[i][:,n1]) and np.all(ms[i][:,n2])) for i in range(N_worms)]
+            if np.any(valid):
+                y1s = np.concatenate([ys[i][:, n1] for i in range(N_worms) if valid[i]])
+                y2s = np.concatenate([ys[i][:, n2] for i in range(N_worms) if valid[i]])
+                xcorr[n1, n2] = np.corrcoef(y1s, y2s)[0, 1]
+                xcorr[n2, n1] = xcorr[n1, n2]
+    return xcorr
 
 def _split_test_train(y, train=None, train_frac=0.8):
     T = y.shape[0]
@@ -300,10 +314,14 @@ def plot_best_model_results(best_model,
                             do_plot_x_3d=True,
                             do_plot_x_2d=True,
                             do_plot_sigmasq=True,
+                            do_plot_xcorr=True,
                             do_plot_similarity=True,
                             do_plot_cluster_embedding=True,
                             do_plot_cluster_locations=True,
-                            do_plot_data=True):
+                            do_plot_data=True,
+                            do_plot_data_zoom=True,
+                            do_plot_data_as_matrix=True,
+                            do_plot_smoothed_data_as_matrix=True):
 
     # False color with the "true" label from Zimmer
     if do_plot_x_3d:
@@ -340,20 +358,66 @@ def plot_best_model_results(best_model,
         cmap = gradient_cmap([np.ones(3), colors[0]])
         cmap.set_bad(0.7 * np.ones(3))
 
-        fig = plt.figure(figsize=(5.5, 2.))
-        ax = fig.add_subplot(111)
-        im = ax.imshow(np.sqrt(sigma_obs), vmin=0, aspect="auto", cmap=cmap)
-        ax.set_xticks(np.arange(D_obs))
-        ax.set_xticklabels(neuron_names, rotation="90", fontsize=6)
+        fig = plt.figure(figsize=(1.9, 1.0))
+        # ax = fig.add_subplot(111)
+        ax = create_axis_at_location(fig, 0.4, 0.3, 1.15, .5)
+        im = ax.imshow(np.sqrt(sigma_obs)[:,neuron_perm], vmin=0, aspect="auto", cmap=cmap)
+
+        for o in cluster_offsets[:-1]:
+            ax.plot([o+.5, o+.5], [-.5, N_worms-.5], '-', lw=1, color='k')
+
+        ax.set_xlim(-0.5, D_obs - 0.5)
+        plt.xticks(cluster_offsets, cluster_offsets + 1, fontsize=6)
+        ax.set_xlabel("neuron", fontsize=8, labelpad=-1)
+        ax.set_ylim(N_worms -0.5, -0.5)
+        # ax.set_xticks(np.arange(D_obs))
+        # ax.set_xticklabels(neuron_names[neuron_perm], rotation="90", fontsize=6)
         ax.set_yticks(np.arange(N_worms))
-        ax.set_yticklabels(np.arange(N_worms) + 1)
-        ax.set_ylabel("Worm")
+        ax.set_yticklabels(np.arange(N_worms) + 1, fontsize=6)
+        ax.set_ylabel("worm", fontsize=8)
 
-        ax.set_title("$\sigma_{\mathsf{obs}}$")
+        ax.set_title("$\sigma_{\mathsf{obs}}$", fontsize=8)
 
-        plt.colorbar(im)
-        plt.tight_layout()
+        cax = create_axis_at_location(fig, 1.6, 0.3, .075, .5)
+        cbar = plt.colorbar(im, cax=cax, ticks=[0, 0.3, 0.6])
+        cbar.ax.tick_params(labelsize=6)
+        # plt.tight_layout(pad=0.1)
         plt.savefig(os.path.join(fig_dir, "observation_variance.pdf"))
+
+    if do_plot_xcorr:
+
+        # Plot the correlation matrix
+        fig = plt.figure(figsize=(2.5, 3.0))
+        ax = create_axis_at_location(fig, 0.3, 0.6, 2.1, 2.1)
+
+        cmap = gradient_cmap([colors[0], np.ones(3), colors[1]])
+        cmap.set_bad(0.5 * np.ones(3))
+        np.fill_diagonal(xcorr, np.nan)
+        lim = max(abs(np.nanmax(xcorr)), abs(np.nanmin(xcorr)))
+        im = ax.imshow(xcorr[np.ix_(neuron_perm, neuron_perm)], cmap=cmap, vmin=-lim, vmax=lim)
+
+        for o in cluster_offsets[:-1]:
+            ax.plot([o + .5, o + .5], [-0.5, D_obs + 0.5], '-', lw=1, color='k')
+            ax.plot([-.5, D_obs + 0.5], [o + .5, o + .5], '-', lw=1, color='k')
+        plt.xlim(-0.5, D_obs - 0.5)
+        plt.ylim(D_obs - 0.5, -0.5)
+        plt.xlabel("neuron", fontsize=6)
+        plt.ylabel("neuron", fontsize=6)
+        # plt.xticks(np.arange(D_obs), neuron_names[neuron_perm], rotation=90, fontsize=3)
+        # plt.yticks(np.arange(D_obs), neuron_names[neuron_perm], fontsize=3)
+        plt.xticks([])
+        plt.yticks([])
+        plt.title("empirical correlation matrix", fontsize=8)
+
+        cax = create_axis_at_location(fig, 0.3, 0.3, 2.1, 0.075)
+        cbar = plt.colorbar(mappable=im, cax=cax, orientation="horizontal")
+        cbar.ax.tick_params(labelsize=4)
+        cbar.ax.set_xlabel("correlation coefficient", fontsize=6)
+
+        plt.savefig(os.path.join(fig_dir, "permuted_correlation.pdf"))
+        plt.savefig(os.path.join(fig_dir, "permuted_correlation.png"), dpi=300)
+
+        plt.close("all")
 
     if do_plot_similarity:
 
@@ -362,64 +426,82 @@ def plot_best_model_results(best_model,
         S_true /= np.linalg.norm(C, axis=1)[None, :]
 
         # Plot the similarity matrix
-        fig = plt.figure(figsize=(6, 6))
-        ax = fig.add_subplot(111)
-        im = ax.imshow(S_true[np.ix_(neuron_perm, neuron_perm)], cmap="RdBu", vmin=-1, vmax=1)
+        fig = plt.figure(figsize=(2.5, 3.0))
+        ax = create_axis_at_location(fig, 0.3, 0.6, 2.1, 2.1)
 
-        cluster_sizes = np.bincount(neuron_clusters, minlength=N_clusters)
-        print("cluster sizes: ", cluster_sizes)
+        cmap = gradient_cmap([colors[0], np.ones(3), colors[1]])
+        cmap.set_bad(0.5 * np.ones(3))
+        np.fill_diagonal(S_true, np.nan)
+        im = ax.imshow(S_true[np.ix_(neuron_perm, neuron_perm)], cmap=cmap, vmin=-1, vmax=1)
 
-        offsets = np.cumsum(cluster_sizes) - 1
-        for o in offsets[:-1]:
-            ax.plot([o + .5, o + .5], [-0.5, D_obs + 0.5], '-', lw=2, color=0 * np.ones(3))
-            ax.plot([-.5, D_obs + 0.5], [o + .5, o + .5], '-', lw=2, color=0 * np.ones(3))
+        for o in cluster_offsets[:-1]:
+            ax.plot([o + .5, o + .5], [-0.5, D_obs + 0.5], '-', lw=1, color='k')
+            ax.plot([-.5, D_obs + 0.5], [o + .5, o + .5], '-', lw=1, color='k')
         plt.xlim(-0.5, D_obs - 0.5)
         plt.ylim(D_obs - 0.5, -0.5)
-        plt.xlabel("neuron")
-        plt.ylabel("neuron")
-        plt.xticks(np.arange(D_obs), neuron_names[neuron_perm], rotation=90, fontsize=6)
-        plt.yticks(np.arange(D_obs), neuron_names[neuron_perm], fontsize=6)
-        plt.title("similarity between neural embeddings")
+        plt.xlabel("neuron", fontsize=6)
+        plt.ylabel("neuron", fontsize=6)
+        # plt.xticks(np.arange(D_obs), neuron_names[neuron_perm], rotation=90, fontsize=3)
+        # plt.yticks(np.arange(D_obs), neuron_names[neuron_perm], fontsize=3)
+        plt.xticks([])
+        plt.yticks([])
+        plt.title("embedding similarity", fontsize=8)
 
-        divider = make_axes_locatable(ax)
-        cax = divider.append_axes("right", size="3%", pad=0.1)
-        plt.colorbar(mappable=im, cax=cax, label="cosine similarity")
-
-        plt.tight_layout()
+        cax = create_axis_at_location(fig, 0.3, 0.3, 2.1, 0.075)
+        cbar = plt.colorbar(mappable=im, cax=cax, orientation="horizontal")
+        cbar.ax.tick_params(labelsize=4)
+        cbar.ax.set_xlabel("cosine similarity", fontsize=6)
 
         plt.savefig(os.path.join(fig_dir, "permuted_similarity.pdf"))
         plt.savefig(os.path.join(fig_dir, "permuted_similarity.png"), dpi=300)
 
-        plt.show()
+        plt.close("all")
 
-    # if do_plot_cluster_embedding:
-    #     for cluster in range(N_clusters):
-    #         fig = plt.figure(figsize=(1.5, 1.5))
-    #         ax = fig.add_subplot(111, projection="3d")
-    #         for i in np.where(neuron_clusters == cluster)[0]:
-    #             ci = C[i]
-    #             ci /= np.linalg.norm(ci)
-    #             ax.plot([0, ci[0]],
-    #                      [0, ci[1]],
-    #                      [0, ci[2]],
-    #                      '-k', lw=1)
-    #             ax.plot([ci[0]],
-    #                     [ci[1]],
-    #                     [ci[2]],
-    #                     'ok', markersize=4)
-    #             # ax.text(1.1 * ci[0], 1.1 * ci[1], 1.1 * ci[2], neuron_names[i], fontsize=6)
-    #
-    #         ax.set_xlabel("$x_1$", labelpad=-10)
-    #         ax.set_ylabel("$x_2$", labelpad=-10)
-    #         ax.set_zlabel("$x_3$", labelpad=-10)
-    #         ax.set_xticklabels([])
-    #         ax.set_yticklabels([])
-    #         ax.set_zticklabels([])
-    #         ax.set_xlim(-.75, .75)
-    #         ax.set_ylim(-.75, .75)
-    #         ax.set_zlim(-.75, .75)
-    #
-    #     plt.show()
+    if do_plot_cluster_embedding:
+
+        # fig = plt.figure(figsize=(1, 1))
+        # ax = fig.add_subplot(111, projection="3d")
+        # for cluster in range(N_clusters):
+        #     for i in np.where(neuron_clusters == cluster)[0]:
+        #         ci = C[i]
+        #         ci /= np.linalg.norm(ci)
+        #         ax.plot([0, ci[0]], [0, ci[1]], [0, ci[2]],
+        #                  '-k', lw=.5)
+        #         ax.plot([ci[0]], [ci[1]], [ci[2]],
+        #                 'ok', markersize=2)
+        #         # ax.text(1.1 * ci[0], 1.1 * ci[1], 1.1 * ci[2], neuron_names[i], fontsize=6)
+        #
+        #     ax.set_xlabel("dim 1", labelpad=-17, fontsize=6)
+        #     ax.set_ylabel("dim 2", labelpad=-17, fontsize=6)
+        #     ax.set_zlabel("dim 3", labelpad=-17, fontsize=6)
+        #     ax.set_xticklabels([])
+        #     ax.set_yticklabels([])
+        #     ax.set_zticklabels([])
+        #     ax.set_xlim(-.75, .75)
+        #     ax.set_ylim(-.75, .75)
+        #     ax.set_zlim(-.75, .75)
+        #
+        # plt.tight_layout(pad=0.05)
+        # plt.savefig(os.path.join(fig_dir, "embedding.pdf"))
+
+        fig = plt.figure(figsize=(1., 3.0))
+        ax = create_axis_at_location(fig, 0.4, 0.6, 0.5, 2.1)
+        lim = abs(C).max()
+        cmap = gradient_cmap([colors[0], np.ones(3), colors[1]])
+        ax.imshow(C[neuron_perm][:,:-1], aspect="auto", vmin=-lim, vmax=lim, cmap=cmap)
+
+        for o in cluster_offsets[:-1]:
+            ax.plot([-.5, 10-.5], [o+.5, o+.5], '-', lw=1, color='k')
+
+        ax.set_ylabel("neuron", labelpad=1, fontsize=6)
+        plt.yticks(np.arange(D_obs), neuron_names[neuron_perm], fontsize=3)
+        ax.set_xlabel("latent\ndimension", labelpad=-1, fontsize=6)
+        ax.set_xticks([0, 9])
+        ax.set_xticklabels([1, 10], fontsize=4)
+        ax.set_title("emission\nmatrix", fontsize=8)
+
+        plt.savefig(os.path.join(fig_dir, "C.pdf"))
+        plt.close("all")
 
     if do_plot_data:
         all_ys = np.vstack(ys)
@@ -433,18 +515,14 @@ def plot_best_model_results(best_model,
                               group=i)
 
             y = ys[i].copy()
-            # y[~ms[i]] = np.nan
-            # ysm[~ms[i]
-            # spc = .75 * abs(y).max()
             spc = 5
 
-            n_frames = 3 * 120 + 1
-            # n_frames = 3 * 60 + 1
-            # n_plot = min(20, D_obs)
-            n_plot = D_obs
-            t = np.arange(n_frames) / 3.0
+            n_start = 9 * 60 * 3
+            n_frames = 3 * 60 * 3 + 1
+            t = n_start / 180.0 + np.arange(n_frames) / 180.0
 
-            plt.figure(figsize=(5.5, 7))
+            fig = plt.figure(figsize=(2.15, 5))
+            ax = create_axis_at_location(fig, 0.5, 0.4, 1.5, 4.43)
             offset = 0
             ticks = []
             for c in range(N_clusters):
@@ -453,10 +531,11 @@ def plot_best_model_results(best_model,
                         continue
 
                     if ms[i][0, n]:
-                        plt.plot(t, y[:n_frames, n] / scales[n] + spc * offset, '-', color='k', lw=1.5)
+                        plt.plot(t, -y[n_start:n_start+n_frames, n] / scales[n] + spc * offset, '-', color=colors[3], lw=.5)
                     else:
-                        plt.plot(t, np.zeros_like(t) + spc * offset, ':', color='k', lw=1)
-                    plt.plot(t, ysm[:n_frames, n] / scales[n] + spc * offset, '-', color=colors[0], lw=1)
+                        # plt.plot(t, np.zeros_like(t) + spc * offset, ':', color='k', lw=.5)
+                        pass
+                    plt.plot(t, -ysm[n_start:n_start+n_frames, n] / scales[n] + spc * offset, '-', color='k', lw=.5)
 
                     ticks.append(offset * spc)
                     offset += 1
@@ -467,36 +546,161 @@ def plot_best_model_results(best_model,
             # Remove last space
             offset -= 2
 
-            # for d,n in enumerate(neuron_perm):
-            #     if ms[i][0, n]:
-            #         plt.plot(t, y[:n_frames, n] / scales[n] + spc * d, '-', color='k', lw=1)
-            #     else:
-            #         plt.plot(t, np.zeros_like(t) + spc * d, ':', color='k', lw=1)
-            #     plt.plot(t, ysm[:n_frames, n] / scales[n] + spc * d, '-', color=colors[0], lw=1.5)
-
-            plt.yticks(ticks, neuron_names[neuron_perm], fontsize=6)
+            plt.yticks(ticks, neuron_names[neuron_perm], fontsize=5)
             plt.ylim(offset * spc, -spc)
             plt.ylim(offset * spc, -spc)
-            plt.xlim(0, t[-1])
+            plt.xlim(t[0], t[-1])
             plt.xticks(fontsize=6)
-            plt.xlabel("time (s)")
+            plt.xlabel("time (min)", fontsize=8)
 
-            plt.title("Worm {} Activity".format(i+1))
-            plt.tight_layout()
+            plt.title("Worm {} Differenced Ca++".format(i+1), fontsize=8)
 
-            # plt.savefig(os.path.join(results_dir, "y_{}.png".format(i)), dpi=300)
             plt.savefig(os.path.join(fig_dir, "y_{}.pdf".format(i)))
 
         plt.close("all")
-        # plt.show()
+
+    if do_plot_data_zoom:
+        all_ys = np.vstack(ys)
+        all_ms = np.vstack(ms)
+        all_ys[~all_ms] = np.nan
+        scales = np.nanstd(all_ys, axis=0)
+
+        for i in range(N_worms):
+            ysm = best_model.smooth(ys[i], mask=ms[i],
+                                    inputs=np.ones((ys[i].shape[0], 1)),
+                                    group=i)
+
+            y = ys[i].copy()
+            spc = 5
+
+            n_start = 10 * 60 * 3
+            n_frames = int(.5 * 60) * 3 + 1
+            t = (n_start + np.arange(n_frames)) / 180.0
+
+            fig = plt.figure(figsize=(2.15, 5))
+            ax = create_axis_at_location(fig, 0.5, 0.4, 1.5, 4.43)
+            offset = 0
+            ticks = []
+            for c in range(N_clusters):
+                for n in neuron_perm:
+                    if neuron_clusters[n] != c:
+                        continue
+
+                    if ms[i][0, n]:
+                        plt.plot(t, -y[n_start:n_start + n_frames, n] / scales[n] + spc * offset, '-', color=colors[3],
+                                 lw=.5)
+                    else:
+                        # plt.plot(t, np.zeros_like(t) + spc * offset, ':', color='k', lw=.5)
+                        pass
+                    plt.plot(t, -ysm[n_start:n_start + n_frames, n] / scales[n] + spc * offset, '-', color='k', lw=.5)
+
+                    ticks.append(offset * spc)
+                    offset += 1
+
+                # Add an extra space between clusters
+                offset += 2
+
+            # Remove last space
+            offset -= 2
+
+            plt.yticks(ticks, neuron_names[neuron_perm], fontsize=5)
+            plt.ylim(offset * spc, -spc)
+            plt.ylim(offset * spc, -spc)
+            plt.xlim(t[0], t[-1])
+            plt.xticks([t[0], t[n_frames//2], t[-1]], fontsize=6)
+            plt.xlabel("time (min)", fontsize=8)
+
+            plt.title("Worm {} Differenced Ca++".format(i + 1), fontsize=8)
+
+            plt.savefig(os.path.join(fig_dir, "y_zoom_{}.pdf".format(i)))
+
+        plt.close("all")
+
+    if do_plot_data_as_matrix:
+        all_ys = np.vstack(ys)
+        all_ms = np.vstack(ms)
+        all_ys[~all_ms] = np.nan
+        scales = np.nanstd(all_ys, axis=0)
+        all_ys /= scales[None, :]
+        # ylim = 1.05 * np.nanmax(abs(all_ys))
+        ylim = 8
+        cticks = [-8, -4, 0, 4, 8]
+        cticklabels = ["-8", "-4", " 0", " 4", " 8"]
+
+        fig = plt.figure(figsize=(3.85, 5))
+
+        for i in range(N_worms):
+            ax = create_axis_at_location(fig, 0.4, 5 - (i+1) * 0.92, 1.5, 0.75)
+
+            # Plot the observed data
+            y = ys[i].copy()
+            y /= scales[None, :]
+            y[~ms[i]] = np.nan
+
+            cmap = gradient_cmap([colors[0], np.ones(3), colors[1]])
+            cmap.set_bad(0.75 * np.ones(3))
+            plt.imshow(y[:,neuron_perm].T, cmap=cmap, vmin=-ylim, vmax=ylim,
+                       aspect="auto", interpolation="nearest")
+
+            # Plot cluster dividers
+            for o in cluster_offsets[:-1]:
+                plt.plot([0, 3240], [o + .5, o + .5], '-', lw=.5, color='k')
+
+            plt.yticks(cluster_offsets, cluster_offsets+1, fontsize=6)
+            plt.ylabel("neurons", fontsize=8)
+
+            plt.xlim(0, 3240)
+            if i == N_worms - 1:
+                plt.xticks(np.arange(19, step=3) * 60 * 3, np.arange(19, step=3), fontsize=6)
+                plt.xlabel("time (min)", fontsize=8)
+            else:
+                plt.xticks([])
+
+            plt.title("Worm {} Differenced Ca++".format(i+1), y=.95, fontsize=8)
+
+            # Plot the smoothed activity
+            ax = create_axis_at_location(fig, 2.0, 5 - (i + 1) * 0.92, 1.5, 0.75)
+            ysm = best_model.smooth(ys[i], mask=ms[i],
+                                    inputs=np.ones((ys[i].shape[0], 1)),
+                                    group=i)
+            ysm /= scales[None, :]
+            im = plt.imshow(ysm[:, neuron_perm].T, cmap=cmap, vmin=-ylim, vmax=ylim,
+                            aspect="auto", interpolation="nearest")
+
+            # Plot cluster dividers
+            for o in cluster_offsets[:-1]:
+                plt.plot([0, 3240], [o + .5, o + .5], '-', lw=.5, color='k')
+
+            plt.yticks([])
+            plt.xlim(0, 3240)
+            if i == N_worms - 1:
+                plt.xticks(np.arange(19, step=3) * 60 * 3, np.arange(19, step=3), fontsize=6)
+                plt.xlabel("time (min)", fontsize=8)
+            else:
+                plt.xticks([])
+
+            plt.title("Worm {} Smoothed".format(i + 1), y=.95, fontsize=8)
+
+            # Make a colorbar
+            cax = create_axis_at_location(fig, 3.55, 5 - (i + 1) * 0.92, 0.075, 0.75)
+            cbar = plt.colorbar(im, cax=cax, ticks=cticks)
+            cbar.ax.tick_params(labelsize=6)
+            cbar.ax.set_yticklabels(cticklabels)
+
+        plt.savefig(os.path.join(fig_dir, "y_matrix.pdf"))
+        plt.close("all")
 
     if do_plot_cluster_locations:
         import pandas
         locs = pandas.read_csv("wormatlas_locations.csv").values
         l_values = np.unique(locs[:,1])
 
-        fig = plt.figure(figsize=(1.5, 2.5))
-        ax = fig.add_subplot(111)
+        for lv in l_values:
+            print("{} - {}".format(lv, np.sum(locs[:,1] == lv)))
+
+        fig = plt.figure(figsize=(2.5, 1.0))
+        # ax = fig.add_subplot(111)
+        ax = create_axis_at_location(fig, 0.3, 0.3, 2.1, .6)
         spc = 1
 
         sizes = dict([(lv, 2) for lv in l_values])
@@ -504,27 +708,38 @@ def plot_best_model_results(best_model,
             i2 = np.where(locs[:, 0] == name)[0][0]
             l = locs[i2, 1]
             plt.plot(l, 0, 'ko', markersize=sizes[l], alpha=0.5)
-            sizes[l] += 1
+            sizes[l] += .75
+        ax.text(0.03, 0, "all neurons", fontsize=4, style="italic")
+        print(sizes)
+
+        for cluster in range(N_clusters):
+            sizes = dict([(lv, 2) for lv in l_values])
+            yoff = spc + spc * (cluster+1)
+            for i1 in np.where(neuron_clusters == cluster)[0]:
+                i2 = np.where(locs[:,0] == neuron_names[i1])[0][0]
+                l = locs[i2, 1]
+                plt.plot(l, yoff, 'o', color=colors[0], markersize=sizes[l], alpha=0.5)
+                sizes[l] += .75
+            ax.text(0.03, yoff, "cluster {}".format(cluster+1), fontsize=4, style="italic")
+
+        # Make a legend
+        ax.plot(.273, 2, 'ko', markersize=2)
+        ax.text(.28, 2.3, "1 neuron", fontsize=4)
+        ax.plot(.273, 4, 'ko', markersize=3.5)
+        ax.text(.28, 4.3, "3 neurons", fontsize=4)
+        ax.plot(.273, 6, 'ko', markersize=5)
+        ax.text(.28, 6.3, "5 neurons", fontsize=4)
+
 
         ax.spines["left"].set_visible(False)
         ax.spines["top"].set_visible(False)
         ax.spines["right"].set_visible(False)
-        ax.set_xlim([0.03, 0.27])
+        ax.set_xlim([0.03, 0.30])
         ax.set_yticks([])
-        ax.set_ylim(spc * (N_clusters+1), -spc)
-        ax.set_xticks([0.05, 0.15, 0.25])
-        ax.set_xlabel("location")
-
-        for cluster in range(N_clusters):
-            sizes = dict([(lv, 2) for lv in l_values])
-            for i1 in np.where(neuron_clusters == cluster)[0]:
-                i2 = np.where(locs[:,0] == neuron_names[i1])[0][0]
-                l = locs[i2, 1]
-                plt.plot(l, spc * (cluster+1), 'o', color=colors[0], markersize=sizes[l], alpha=0.5)
-                sizes[l] += 1
-
-        # plt.tight_layout(rect=(0.01, 0.01, .98, .98))
-        plt.tight_layout(pad=0.05)
+        ax.set_ylim(spc * (N_clusters + 2), -2 * spc)
+        # ax.set_xticks([0.05, 0.15, 0.25])
+        plt.xticks([0.08, 0.15, 0.25], fontsize=4)
+        ax.set_xlabel("location", fontsize=6)
         plt.savefig(os.path.join(fig_dir, "cluster_locs.pdf"))
 
         plt.close("all")
@@ -724,6 +939,9 @@ if __name__ == "__main__":
     ys, ms, z_trues, z_true_key, neuron_names = load_data(include_unnamed=False)
     D_obs = ys[0].shape[1]
 
+    # compute the correlation coefficients for each pair of neurons
+    xcorr = comput_xcorr(ys, ms)
+
     # Split test train
     ytrains, ytests, train_inds = list(zip(*[_split_test_train(y, train_frac=0.8) for y in ys]))
     mtrains, mtests, _ = list(zip(*[_split_test_train(m, train=train) for m, train in zip(ms, train_inds)]))
@@ -758,6 +976,8 @@ if __name__ == "__main__":
 
     # Cluster the neurons based on C
     neuron_perm, neuron_clusters = cluster_neruons(best_model)
+    cluster_sizes = np.bincount(neuron_clusters, minlength=N_clusters)
+    cluster_offsets = np.cumsum(cluster_sizes) - 1
 
     # plot_likelihoods(final_lls, hlls, best_index)
     #
@@ -765,32 +985,36 @@ if __name__ == "__main__":
                             do_plot_x_3d=False,
                             do_plot_x_2d=False,
                             do_plot_sigmasq=False,
+                            do_plot_xcorr=False,
                             do_plot_similarity=False,
                             do_plot_cluster_embedding=False,
                             do_plot_cluster_locations=True,
-                            do_plot_data=False)
+                            do_plot_data=False,
+                            do_plot_data_zoom=False,
+                            do_plot_data_as_matrix=False,
+                            )
 
     # heldout_neuron_identification()
     #
-    # # Save out the results
-    # results = dict(
-    #     xtrains=xtrains,
-    #     xtests=xtests,
-    #     ytrains=ytrains,
-    #     ytests=ytests,
-    #     mtrains=mtrains,
-    #     mtests=mtests,
-    #     z_true_trains=z_true_trains,
-    #     z_true_tests=z_true_tests,
-    #     z_key=z_true_key,
-    #     best_model=best_model,
-    #     D_latent=best_model.D_latent,
-    #     C=C,
-    #     perm=dim_perm,
-    #     N_clusters=N_clusters,
-    #     neuron_clusters=neuron_clusters,
-    #     neuron_perm=neuron_perm
-    # )
-    #
-    # with open(os.path.join(results_dir, "lds_data.pkl"), "wb") as f:
-    #     pickle.dump(results, f)
+    # Save out the results
+    results = dict(
+        xtrains=xtrains,
+        xtests=xtests,
+        ytrains=ytrains,
+        ytests=ytests,
+        mtrains=mtrains,
+        mtests=mtests,
+        z_true_trains=z_true_trains,
+        z_true_tests=z_true_tests,
+        z_key=z_true_key,
+        best_model=best_model,
+        D_latent=best_model.D_latent,
+        C=C,
+        perm=dim_perm,
+        N_clusters=N_clusters,
+        neuron_clusters=neuron_clusters,
+        neuron_perm=neuron_perm
+    )
+
+    with open(os.path.join(results_dir, "lds_data.pkl"), "wb") as f:
+        pickle.dump(results, f)

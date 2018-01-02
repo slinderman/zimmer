@@ -53,7 +53,7 @@ import zimmer.plotting
 importlib.reload(zimmer.plotting)
 from zimmer.plotting import plot_3d_continuous_states, plot_2d_continuous_states, plot_expected_states, \
     plot_3d_dynamics, plot_2d_dynamics, plot_state_overlap, plot_state_usage_by_worm, plot_all_transition_matrices, \
-    plot_simulated_trajectories, make_state_predictions_3d_movie, plot_simulated_trajectories2, \
+    plot_simulated_trajectories, make_state_predictions_3d_movie, plot_simulated_trajectories2, plot_simulated_trajectories3,\
     plot_recurrent_transitions, plot_x_at_changepoints, plot_latent_trajectories_vs_time, \
     plot_state_usage_by_worm_matrix, plot_duration_histogram
 
@@ -177,46 +177,55 @@ def _fit_model_wrapper(K, alpha=3, gamma=100., kappa=100.,
     return model, np.array(lls), hll, None
 
 
-def plot_likelihoods(Ks, final_lls, hlls, best_index,
+def plot_likelihoods(group, Ks, final_lls, hlls, best_index,
                      color, name, axs=None):
 
     # Plot results of searching over models
     if axs is None:
-        plt.figure(figsize=(6,3))
-        ax1 = plt.subplot(121)
-        ax2 = plt.subplot(122)
+        plt.figure(figsize=(2.4,1.8))
+        # ax1 = plt.subplot(211)
+        # ax2 = plt.subplot(212)
+        ax = plt.subplot(111)
     else:
-        ax1, ax2 = axs
+        ax = axs
 
-    # for D_latent, lls in zip(D_latents, llss):
-    #     plt.plot(lls, label=D_latent)
-    # plt.legend(loc="lower right")
-    ax1.plot(Ks, final_lls / T_trains[:N_worms].sum(),
-             '-', markersize=6, color=color)
-    for index in range(len(Ks)):
-        if index != best_index:
-            ax1.plot(Ks[index], final_lls[index] / T_trains[:N_worms].sum(),
-                     'o', markersize=6, color=color)
+    M = len(Ks)
+    T_te = T_tests[:N_worms].sum()
 
-    ax1.plot(Ks[best_index], final_lls[best_index] / T_trains[:N_worms].sum(),
-             '*', markersize=10, color=color)
-    ax1.set_xlabel("Number of States")
-    ax1.set_ylabel("Train Log Likelihood")
+    cmap = gradient_cmap([np.ones(3), colors[4]])
+    for m in range(M):
+        label = "K={}".format(Ks[m]) \
+            if group == 0 and \
+               (Ks[m] == 4 or Ks[m] == 12 or Ks[m] == 20) \
+            else None
+        xx = group + m / (M+2)
+        ax.bar(xx, hlls[m] / T_te,
+               width=1. / (M + 2),
+               color=cmap((m+1) / M),
+               edgecolor='k',
+               label=label)
 
-    ax2.plot(Ks, hlls / T_tests[:N_worms].sum(),
-             '-', markersize=6, color=color, label=name)
+    if group == 0:
+        ax.plot(best_index / (M+2), 12.65, 'k*', markersize=4)
 
-    for index in range(len(Ks)):
-        if index != best_index:
-            ax2.plot(Ks[index], hlls[index] / T_tests[:N_worms].sum(),
-                     'o', markersize=6, color=color)
+    # ax.set_xlabel("Model", fontsize=6)
+    ax.set_title("model selection", fontsize=8)
+    ax.set_ylabel("test log likelihood\n(nats per time bin)", fontsize=6)
+    ax.tick_params(labelsize=6)
+    ax.set_ylim(11.25, 12.75)
 
-    ax2.plot(Ks[best_index], hlls[best_index] / T_tests[:N_worms].sum(),
-             '*', markersize=10, color=color)
-    ax2.set_xlabel("Number of States")
-    ax2.set_ylabel("Test Log Likelihood")
+    # update xticks
+    xticks = ax.get_xticks()
+    if group > 0:
+        xticklabels = list(ax.get_xticklabels())
+        xticklabels.append(name)
+    else:
+        xticklabels = [name]
 
-    return ax1, ax2
+    ax.set_xticks(np.arange(group + 1) + 0.5)
+    ax.set_xticklabels(xticklabels)
+
+    return ax
 
 
 def fit_all_models(Ks=np.arange(4, 21, 2)):
@@ -229,6 +238,11 @@ def fit_all_models(Ks=np.arange(4, 21, 2)):
         hlls = []
         z_smplss = []
 
+        group_name = "{}\n{}\n{}".format(
+            "hier." if is_hierarchical else "std.",
+            "rob." if is_robust else "std.",
+            "rec." if is_recurrent else "std."
+        )
         for K in Ks:
             name = "{}_{}_{}_{}".format(
                 "hier" if is_hierarchical else "nohier",
@@ -256,12 +270,12 @@ def fit_all_models(Ks=np.arange(4, 21, 2)):
         best_index = np.argmax(hlls)
         print("Best number of states: {}".format(Ks[best_index]))
 
-        axs = plot_likelihoods(Ks, final_lls, hlls, best_index,
-                               name=name, color=colors[index], axs=axs)
+        axs = plot_likelihoods(index, Ks, final_lls, hlls, best_index,
+                               name=group_name, color=colors[index], axs=axs)
 
     plt.tight_layout()
-    plt.legend(loc="lower right")
-    plt.savefig(os.path.join(fig_dir, "dimensionality.pdf".format(name)))
+    plt.legend(loc="upper right", fontsize=4, handlelength=1, labelspacing=.5)
+    # plt.savefig(os.path.join(fig_dir, "dimensionality.pdf".format(name)))
 
 
 def fit_best_model(K=8,
@@ -287,7 +301,7 @@ def fit_best_model(K=8,
     return best_model, lls, hll
 
 
-def simulate_trajectories(N_trajs=100, T_sim=30, N_sims=4, worm=1, min_sim_dur=6):
+def simulate_trajectories(N_trajs=100, T_sim=30, N_sims=4, worm=4, min_sim_dur=6):
     from pyhsmm.util.general import rle
     z_finals_rles = [rle(z) for z in z_finals]
 
@@ -359,6 +373,7 @@ def plot_best_model_results(do_plot_expected_states=True,
                             do_plot_x_at_changepoints=True,
                             do_plot_latent_trajectories_vs_time=True,
                             do_plot_duration_histogram=True,
+                            do_plot_eigenspectrum=True,
                             T_sim=10*3):
     # Plot the expected states and changepoint probabilities
     if do_plot_expected_states:
@@ -388,14 +403,24 @@ def plot_best_model_results(do_plot_expected_states=True,
     if do_plot_x_3d:
         for i in range(N_worms):
             plot_3d_continuous_states(xtrains[i], z_finals[i], colors,
-                                      figsize=(2.7, 2.7),
+                                      figsize=(1.2, 1.2),
                                       # title="LDS Worm {} States (ARHMM Labels)".format(i + 1),
-                                      title="Worm {}".format(i + 1),
+                                      title="worm {}".format(i + 1),
                                       results_dir=fig_dir,
                                       filename="x_3d_{}.pdf".format(i + 1),
                                       lim=3,
-                                      lw=1)
-        plt.close("all")
+                                      lw=.5,
+                                      inds=(0,1,2))
+            plot_3d_continuous_states(xtrains[i], z_finals[i], colors,
+                                      figsize=(1.2, 1.2),
+                                      # title="LDS Worm {} States (ARHMM Labels)".format(i + 1),
+                                      title="worm {}".format(i + 1),
+                                      results_dir=fig_dir,
+                                      filename="x_3d_345_{}.pdf".format(i + 1),
+                                      lim=3,
+                                      lw=.5,
+                                      inds=(3,4,5))
+            plt.close("all")
 
     if do_plot_dynamics_3d:
         plot_3d_dynamics(
@@ -459,14 +484,20 @@ def plot_best_model_results(do_plot_expected_states=True,
 
     if do_plot_simulated_trajs:
         for k in range(best_model.num_states):
+        # for k in range(1):
             long_sims = [x_sim for x_sim in x_simss[k] if x_sim.shape[0] >= 6]
             stable_sims = [x_sim for x_sim in long_sims if abs(x_sim).max() < 3]
             inds = np.random.choice(len(stable_sims), size=4, replace=False)
 
-            plot_simulated_trajectories2(
-                k, x_trajss[k], [stable_sims[i] for i in inds], C_clusters, d_clusters, T_sim,
-                lim=3,
+            # plot_simulated_trajectories2(
+            #     k, x_trajss[k], [stable_sims[i] for i in inds], C_clusters, d_clusters, T_sim,
+            #     lim=3,
+            #     results_dir=fig_dir)
+
+            plot_simulated_trajectories3(
+                k, [stable_sims[i] for i in inds], C_clusters, d_clusters, T_sim,
                 results_dir=fig_dir)
+
             plt.close("all")
 
     if do_plot_recurrent_weights:
@@ -487,20 +518,22 @@ def plot_best_model_results(do_plot_expected_states=True,
                                results_dir=fig_dir)
 
     if do_plot_latent_trajectories_vs_time:
+        plot_slice = (9 * 60 * 3, 12 * 60 * 3)
         plot_latent_trajectories_vs_time(xs, z_finals,
-                                         plot_slice=(0, 1000),
-                                         title="Inferred segmentation",
+                                         plot_slice=plot_slice,
+                                         show_xticks=False,
+                                         title="inferred segmentation",
                                          basename="x_segmentation",
                                          colors=colors,
                                          results_dir=fig_dir)
 
         plot_latent_trajectories_vs_time(xs, z_trues,
-                                         plot_slice=(0, 1000),
-                                         title="Manual segmentation",
+                                         plot_slice=plot_slice,
+                                         title="manual segmentation",
                                          basename="x_segmentation_zimmer",
                                          colors=zimmer_colors,
                                          results_dir=fig_dir)
-        plt.show()
+        plt.close("all")
 
     if do_plot_duration_histogram:
         durss = [np.array([x_sim.shape[0] for x_sim in x_sims]) for x_sims in x_simss]
@@ -511,6 +544,58 @@ def plot_best_model_results(do_plot_expected_states=True,
                                 perm=perm,
                                 results_dir=fig_dir)
         plt.close("all")
+
+    if do_plot_eigenspectrum:
+        markers = ['o', '^', 's', 'p', 'h']
+        for i, hdd in enumerate(hier_dynamics_distns):
+            width = 1.0 if i == 0 else 0.7
+            left = 0.3 if i == 0 else 0.05
+            fig = plt.figure(figsize=(width, 1.0))
+
+            # ax = fig.add_subplot(111, aspect="equal")
+            from hips.plotting.layout import create_axis_at_location
+            ax = create_axis_at_location(fig, left, 0.2, 0.6, 0.6)
+            for w, dd in enumerate(hdd.regressions):
+                evs = np.linalg.eigvals(dd.A[:,:-1])
+                assert np.all(evs.real >= 0.45)
+                assert np.all(evs.real <= 1.2)
+                assert np.all(evs.imag >= -0.3)
+                assert np.all(evs.imag <= 0.3)
+
+                ax.plot(np.real(evs), np.imag(evs),
+                        ls='',
+                        # marker=markers[w],
+                        marker='o',
+                        markerfacecolor=colors[i],
+                        mec='k',
+                        mew=.5,
+                        markersize=3,
+                        alpha=0.75,
+                        label="worm {}".format(w+1))
+
+            ax.plot([-2.1, 1.2], [0, 0], ':k', lw=0.5)
+            ax.plot([0, 0], [-1.2, 1.2], ':k', lw=0.5)
+            ths = np.linspace(0, 2*np.pi, 100)
+            ax.plot(np.cos(ths), np.sin(ths), '-k', lw=0.5)
+            ax.set_xlim(0.4, 1.2)
+            ax.set_ylim(-0.25, 0.25)
+            ax.set_xlabel("re($\\lambda$)", labelpad=0, fontsize=6)
+
+            if i == 0:
+                ax.set_ylabel("im($\\lambda$)", labelpad=0, fontsize=6)
+                ax.set_yticks([-0.2, 0, 0.2])
+            else:
+                ax.set_yticks([])
+
+            ax.tick_params(labelsize=4)
+
+            # if i == 0:
+            #     ax.legend(loc="lower right", fontsize=4, labelspacing=0.5)
+
+            ax.set_title("state {}".format(i+1), fontsize=6)
+            # plt.tight_layout(pad=0.05)
+
+            plt.savefig(os.path.join(fig_dir, "eigenspectrum_{}.pdf".format(i+1)))
 
 
 # Using the smoothed states, run each model forward making predictions
@@ -578,8 +663,8 @@ if __name__ == "__main__":
                           etasq=0.01,
                           affine=True)
 
-    # Ks = np.arange(4, 21, 2)
-    # fit_all_models(Ks)
+    Ks = np.arange(4, 21, 2)
+    fit_all_models(Ks)
 
     # Fit the best model
     best_model, lls, hll =\
@@ -601,7 +686,8 @@ if __name__ == "__main__":
         relabel_by_usage([np.argmax(E_z, axis=1) for E_z in E_zs],
                          return_mapping=True)
     perm = np.argsort(iperm)
-    dynamics_distns = [best_model.obs_distns[i] for i in perm]
+    hier_dynamics_distns = [best_model.obs_distns[i] for i in perm]
+    dynamics_distns = [dd.regressions[-1] for dd in hier_dynamics_distns]
     print("State usage:")
     print(best_model.state_usages[perm])
 
@@ -618,12 +704,13 @@ if __name__ == "__main__":
         do_plot_dynamics_2d=False,
         do_plot_state_overlap=False,
         do_plot_state_usage=False,
-        do_plot_transition_matrices=True,
-        do_plot_simulated_trajs=False,
+        do_plot_transition_matrices=False,
+        do_plot_simulated_trajs=True,
         do_plot_recurrent_weights=False,
         do_plot_x_at_changepoints=False,
         do_plot_latent_trajectories_vs_time=False,
-        do_plot_duration_histogram=False
+        do_plot_duration_histogram=False,
+        do_plot_eigenspectrum=False
     )
 
     # Rolling predictions

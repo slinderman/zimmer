@@ -215,12 +215,9 @@ def plot_neural_activity():
         fig = plt.figure(figsize=(1.5, 2))
         ax = fig.add_subplot(111)
 
-        mask = np.zeros(N, dtype=bool)
-        mask[np.random.choice(N, size=6, replace=False)] = True
-
         for n in range(N):
             ax.plot(np.arange(T), n + np.zeros(T), '-k', lw=0.5)
-            if mask[n]:
+            if masks[w, n]:
                 ax.plot(np.arange(T), n + ys[w][:,n], color=colors[3])
 
         ax.set_ylim(N, -1)
@@ -233,6 +230,107 @@ def plot_neural_activity():
 
     plt.close("all")
 
+
+def plot_observation_variance():
+    sigmasq = np.random.gamma(shape=1, scale=1, size=(W, N))
+    sigmasq[~masks] = np.nan
+
+    from hips.plotting.colormaps import gradient_cmap
+    cmap = gradient_cmap([np.ones(3), colors[0]])
+    cmap.set_bad(0.7 * np.ones(3))
+
+    fig = plt.figure(figsize=(1.5, .5))
+    ax = fig.add_subplot(111)
+
+    im = ax.imshow(sigmasq, vmin=0, aspect="auto", cmap=cmap)
+    ax.set_xticks([])
+    ax.set_xlabel("neuron")
+    ax.set_yticks([])
+    ax.set_ylabel("worm")
+
+    ax.set_title("observation variance")
+
+    plt.colorbar(im, ticks=[0, 2.5])
+
+    plt.tight_layout(pad=0.1)
+    plt.savefig("fig1_variance.pdf")
+    plt.show()
+
+
+def plot_noise_density(lims=(-3, 3), n_pts=50):
+
+    X, Y = np.meshgrid(np.linspace(lims[0], lims[1], n_pts),
+                     np.linspace(lims[0], lims[1], n_pts))
+    x = np.column_stack((X.ravel(), Y.ravel()))
+
+    mu = np.array([1, 1])
+    sigma = np.array([[1, 0.5],
+                      [0.5, 1]])
+    sigmainv = np.linalg.inv(sigma)
+
+    from scipy.stats import multivariate_normal
+    p_mvn = multivariate_normal(mu, sigma).pdf(x)
+    lp_mvn = multivariate_normal(mu, sigma).logpdf(x)
+
+    # Compute multivariate t density
+    nu = 4
+    D = 2
+    from scipy.special import gammaln
+    lp_mvt = np.zeros(x.shape[0])
+    lp_mvt += gammaln(0.5 * (nu + D))
+    lp_mvt -= (gammaln(0.5 * nu) + 0.5 * D * np.log(nu) + 0.5 * D * np.log(np.pi))
+    lp_mvt -= 0.5 * np.linalg.slogdet(sigma)[1]
+    lp_mvt += -0.5 * (nu + D) * np.log(1 + 1./nu * ((x-mu).dot(sigmainv) * (x-mu)).sum(1))
+    p_mvt = np.exp(lp_mvt)
+
+    dx = (lims[1] - lims[0]) / (n_pts - 1)
+    print(np.sum(p_mvn * dx**2))
+    print(np.sum(p_mvt * dx**2))
+
+    # Get limits
+    # p_max = max(p_mvn.max(), p_mvt.max())
+    # levels = np.linspace(0, p_max, 8)[1:]
+
+    lp_min = min(lp_mvn.min(), lp_mvt.min())
+    lp_max = max(lp_mvn.max(), lp_mvt.max())
+    levels = np.linspace(lp_min, lp_max, 15)[1:]
+
+    fig = plt.figure(figsize=(1.25, .5))
+    ax = fig.add_subplot(121, aspect="equal")
+
+    from hips.plotting.colormaps import white_to_color_cmap
+    cmap = white_to_color_cmap(colors[3])
+    ax.contourf(X, Y, lp_mvn.reshape(X.shape), levels, cmap=cmap)
+    # ax.contour(X, Y, p_mvn.reshape(X.shape), levels, cmap=cmap)
+    # ax.contour(X, Y, p_mvn.reshape(X.shape), cmap=cmap)
+    ax.plot(lims, [0, 0], ':k', lw=0.5)
+    ax.plot([0, 0], lims, ':k', lw=0.5)
+
+    ax.set_xticklabels([])
+    ax.set_yticklabels([])
+    ax.set_xlim(lims)
+    ax.set_ylim(lims)
+
+    # fig = plt.figure(figsize=(.5, .5))
+    ax = fig.add_subplot(122, aspect="equal")
+
+    # cmap = white_to_color_cmap(colors[4])
+    ax.contourf(X, Y, lp_mvt.reshape(X.shape), levels, cmap=cmap)
+    # ax.contour(X, Y, p_mvt.reshape(X.shape), levels, cmap=cmap)
+    # ax.contour(X, Y, p_mvt.reshape(X.shape), cmap=cmap)
+    ax.plot(lims, [0, 0], ':k', lw=0.5)
+    ax.plot([0, 0], lims, ':k', lw=0.5)
+
+    # ax.set_xlabel('$x_1$', labelpad=-5)
+    # ax.set_ylabel('$x_2$', labelpad=-5)
+    ax.set_xticklabels([])
+    ax.set_yticklabels([])
+    ax.set_xlim(lims)
+    ax.set_ylim(lims)
+
+    plt.tight_layout(pad=0.1)
+    plt.savefig("fig1_noise.pdf")
+    plt.show()
 
 if __name__ == "__main__":
     # Simulate data
@@ -251,23 +349,28 @@ if __name__ == "__main__":
     # simulate observations
     sigma = 0.1
     ys = [x.dot(C.T) + sigma * np.random.randn(T, N) for x in xs]
+    masks = np.zeros((W, N), dtype=bool)
+    for w in range(W):
+        masks[w, np.random.choice(N, size=6, replace=False)] = True
+
     for y in ys:
         y /= (2.1 * np.max(abs(y)))
 
-    # Plot the canonical dynamics
-    for k in range(K):
-        plot_vector_field_2d(k, As, bs, worm=-1)
-    plt.close("all")
-
-    # Plot the individual worm dynamics
-    for k in range(K):
-        for w in range(W):
-            plot_vector_field_2d(k, Ahats[w], bhats[w], worm=w)
-    plt.close("all")
+    # # Plot the canonical dynamics
+    # for k in range(K):
+    #     plot_vector_field_2d(k, As, bs, worm=-1)
+    # plt.close("all")
+    #
+    # # Plot the individual worm dynamics
+    # for k in range(K):
+    #     for w in range(W):
+    #         plot_vector_field_2d(k, Ahats[w], bhats[w], worm=w)
+    # plt.close("all")
 
     # Plot the latent states of each worm
     # plot_neural_tuning(C)
     # plot_discrete_latent_states()
     # plot_continuous_latent_states()
     # plot_neural_activity()
-
+    # plot_observation_variance()
+    plot_noise_density()
