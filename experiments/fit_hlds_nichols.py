@@ -711,6 +711,13 @@ if __name__ == "__main__":
     ys, ms, us, z_trues, z_true_key, neuron_names = load_data(include_unnamed=False)
     D_obs = ys[0].shape[1]
 
+    # Encode both the absolute o2 level and the time since o2 change
+    window = 20 * 3
+    tau = 1 * 3
+    delta_o2s = [np.concatenate(([0], np.diff(u))) for u in us]
+    delta_o2s_filt = [np.convolve(d_o2, np.exp(-np.arange(window) / tau), "full")[:-window] for d_o2 in delta_o2s]
+    us = [np.column_stack(u, d_o2) for u, d_o2 in zip(us, delta_o2s_filt)]
+
     # Split test train
     ytrains, ytests, train_inds = list(zip(*[_split_test_train(y, train_frac=0.8) for y in ys]))
     mtrains, mtests, _ = list(zip(*[_split_test_train(m, train=train) for m, train in zip(ms, train_inds)]))
@@ -748,7 +755,6 @@ if __name__ == "__main__":
     neuron_perm, neuron_clusters = cluster_neruons(best_model)
 
     # plot_likelihoods(final_lls, hlls, best_index)
-    #
     plot_best_model_results(best_model,
                             do_plot_x_3d=False,
                             do_plot_x_2d=False,
@@ -758,28 +764,29 @@ if __name__ == "__main__":
                             N_plot=N_worms)
 
     # heldout_neuron_identification()
-    #
-    # # Save out the results
-    # results = dict(
-    #     xtrains=xtrains,
-    #     xtests=xtests,
-    #     ytrains=ytrains,
-    #     ytests=ytests,
-    #     mtrains=mtrains,
-    #     mtests=mtests,
-    #     utrains=utrains,
-    #     utests=utests,
-    #     z_true_trains=z_true_trains,
-    #     z_true_tests=z_true_tests,
-    #     z_key=z_true_key,
-    #     best_model=best_model,
-    #     D_latent=best_model.D_latent,
-    #     C=C,
-    #     perm=dim_perm,
-    #     N_clusters=N_clusters,
-    #     neuron_clusters=neuron_clusters,
-    #     neuron_perm=neuron_perm
-    # )
-    #
-    # with open(os.path.join(results_dir, "lds_data.pkl"), "wb") as f:
-    #     pickle.dump(results, f)
+
+    # Save out the results
+    results = dict(
+        xtrains=xtrains,
+        xtests=xtests,
+        ytrains=ytrains,
+        ytests=ytests,
+        mtrains=mtrains,
+        mtests=mtests,
+        utrains=utrains,
+        utests=utests,
+        z_true_trains=z_true_trains,
+        z_true_tests=z_true_tests,
+        z_key=z_true_key,
+        best_model=best_model,
+        D_latent=best_model.D_latent,
+        C=C,
+        perm=dim_perm,
+        N_clusters=N_clusters,
+        neuron_clusters=neuron_clusters,
+        neuron_perm=neuron_perm,
+        neuron_names=neuron_names,
+    )
+
+    with open(os.path.join(results_dir, "lds_data.pkl"), "wb") as f:
+        pickle.dump(results, f)

@@ -55,7 +55,7 @@ from zimmer.plotting import plot_3d_continuous_states, plot_2d_continuous_states
     plot_3d_dynamics, plot_2d_dynamics, plot_state_overlap, plot_state_usage_by_worm, plot_all_transition_matrices, \
     plot_simulated_trajectories, make_state_predictions_3d_movie, plot_simulated_trajectories2, plot_simulated_trajectories3,\
     plot_recurrent_transitions, plot_x_at_changepoints, plot_latent_trajectories_vs_time, \
-    plot_state_usage_by_worm_matrix, plot_duration_histogram
+    plot_state_usage_by_worm_matrix, plot_duration_histogram, plot_duration_cdfs
 
 # LDS Results
 lds_dir = os.path.join("results", "2017-11-03-hlds", "run002")
@@ -538,11 +538,18 @@ def plot_best_model_results(do_plot_expected_states=True,
     if do_plot_duration_histogram:
         durss = [np.array([x_sim.shape[0] for x_sim in x_sims]) for x_sims in x_simss]
 
-        plot_duration_histogram(best_model.trans_distn,
+        # plot_duration_histogram(best_model.trans_distn,
+        #                         z_finals,
+        #                         durss,
+        #                         perm=perm,
+        #                         results_dir=fig_dir)
+
+        plot_duration_cdfs(best_model.trans_distn,
                                 z_finals,
                                 durss,
                                 perm=perm,
                                 results_dir=fig_dir)
+
         plt.close("all")
 
     if do_plot_eigenspectrum:
@@ -642,7 +649,7 @@ if __name__ == "__main__":
     d = lds_results['best_model'].D[:,0]
     N_clusters = lds_results['N_clusters']
     neuron_clusters = lds_results['neuron_clusters']
-    C_norm = C[:, :-1] / np.linalg.norm(C[:, :-1], axis=1)[:, None]
+    C_norm = C / np.linalg.norm(C, axis=1)[:, None]
     C_clusters = np.array([C[neuron_clusters == c].mean(0) for c in range(N_clusters)])
     d_clusters = np.array([d[neuron_clusters == c].mean(0) for c in range(N_clusters)])
 
@@ -705,11 +712,11 @@ if __name__ == "__main__":
         do_plot_state_overlap=False,
         do_plot_state_usage=False,
         do_plot_transition_matrices=False,
-        do_plot_simulated_trajs=True,
+        do_plot_simulated_trajs=False,
         do_plot_recurrent_weights=False,
         do_plot_x_at_changepoints=False,
         do_plot_latent_trajectories_vs_time=False,
-        do_plot_duration_histogram=False,
+        do_plot_duration_histogram=True,
         do_plot_eigenspectrum=False
     )
 

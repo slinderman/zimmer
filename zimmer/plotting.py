@@ -705,20 +705,19 @@ def plot_state_overlap(z_finals, z_trues,
                        z_key=None,
                        colors=None,
                        z_colors=None,
-                       filename=None,
                        titles=None,
                        results_dir=None):
     colors = default_colors if colors is None else colors
     z_colors = default_colors if z_colors is None else z_colors
     Kmax = np.max(np.concatenate(z_finals)) + 1
     K_zimmer = np.concatenate(z_trues).max() + 1
-    titles = ["State Overlap (Worm {})".format(i+1) for i in range(len(z_trues))] \
+    titles = ["state overlap (worm {})".format(i+1) for i in range(len(z_trues))] \
       if titles is None else titles
 
     def _plot_overlap(overlap, perm, filename, title):
 
-        fig = plt.figure(figsize=(2., 2))
-        ax1 = create_axis_at_location(fig, .5, .5, 1., 1)
+        fig = plt.figure(figsize=(1.5, 1.25))
+        ax1 = create_axis_at_location(fig, .4, .3, .75, .75)
         im = ax1.imshow(overlap[:, perm], vmin=0, vmax=1.0, cmap="Greys", interpolation="nearest", aspect="auto")
         ax1.set_xticks([])
         if z_key is None:
@@ -727,25 +726,27 @@ def plot_state_overlap(z_finals, z_trues,
             ax1.set_yticks(np.arange(K_zimmer))
             ax1.set_yticklabels(z_key, fontdict=dict(size=6))
             ax1.tick_params(axis='y', which='major', pad=11)
-        ax1.set_title(title)
+        ax1.set_title(title, fontsize=8)
 
-        lax = create_axis_at_location(fig, .4, .5, .06, 1)
+        lax = create_axis_at_location(fig, .3, .3, .06, .75)
         lax.imshow(np.arange(K_zimmer)[:, None], cmap=gradient_cmap(z_colors[:K_zimmer]), interpolation="nearest",
                    aspect="auto")
         lax.set_xticks([])
         lax.set_yticks([])
 
         if z_key is None:
-            lax.set_ylabel("Zimmer State", fontsize=8)
+            lax.set_ylabel("manual state", fontsize=6)
 
-        bax = create_axis_at_location(fig, .5, .4, 1., .06)
+        bax = create_axis_at_location(fig, .4, .2, .75, .06)
         bax.imshow(np.arange(Kmax)[perm][None, :], cmap=gradient_cmap(colors[:Kmax]), interpolation="nearest", aspect="auto")
         bax.set_xticks([])
         bax.set_yticks([])
-        bax.set_xlabel("Inferred State", fontsize=8)
+        bax.set_xlabel("inferred state", fontsize=6)
 
-        axcb = create_axis_at_location(fig, 1.55, .5, .1, 1)
+        axcb = create_axis_at_location(fig, 1.2, .3, .06, .75)
         plt.colorbar(im, cax=axcb)
+        axcb.tick_params(labelsize=6)
+
 
         if results_dir is not None:
             plt.savefig(os.path.join(results_dir, filename))
@@ -768,7 +769,7 @@ def plot_state_overlap(z_finals, z_trues,
 
     # Normalize the overlap from all worms and plot
     overlap /= overlap.sum(1)[:, None]
-    _plot_overlap(overlap, perm, "overlap_all.pdf", "State Overlap (All Worms)")
+    _plot_overlap(overlap, perm, "overlap_all.pdf", "state overlap (all worms)")
 
     # Compare zimmer labels to inferred labels
     for worm, (z_true, z_inf) in enumerate(zip(z_trues, z_finals)):
@@ -1429,6 +1430,84 @@ def plot_duration_histogram(trans_distn, zs, sim_durs,
         if results_dir is not None:
             plt.savefig(os.path.join(results_dir, "durations_{}.pdf".format(k)))
 
+def plot_duration_cdfs(trans_distn, zs, sim_durs,
+                       perm=None,
+                       colors=None,
+                       results_dir=None):
+
+    from pyhsmm.util.general import rle
+    from scipy.stats import geom
+    colors = default_colors if colors is None else colors
+
+    states, durs = list(zip(*[rle(z) for z in zs]))
+    states = np.concatenate(states)
+    durs = np.concatenate(durs)
+    K = np.max(states) + 1
+    perm = np.arange(K) if perm is None else perm
+
+    logpi = trans_distn.logpi[np.ix_(perm, perm)]
+    P = np.exp(logpi)
+    P /= P.sum(axis=1, keepdims=True)
+
+    fig = plt.figure(figsize=(3.75, 2))
+    gs = gridspec.GridSpec(2, 4)
+
+    for k in range(K):
+        ax = fig.add_subplot(gs[k // 4, k % 4])
+
+        p_stay = P[k, k]
+        g = geom(1-p_stay)
+        dk = durs[states == k]
+        dmax = dk.max()
+        bins = np.linspace(0, dmax+1, 15)
+        width = (bins[1] - bins[0]) / 2.0
+
+
+        # Plot the histogram of inferred transitions
+        tmp, _ = np.histogram(dk, bins)
+        tmp = tmp.astype(np.float)
+        tmp /= tmp.sum()
+        plt.bar(bins[:-1] / 3.0, np.cumsum(tmp),
+                width=width * 2.0 / 3.0,
+                color=colors[k], alpha=0.75, edgecolor='k', label="Emp")
+
+        # Plot the histogram of simulatedtransitions
+        tmp, _ = np.histogram(sim_durs[k], bins)
+        tmp = tmp.astype(np.float)
+        tmp /= tmp.sum()
+        # plt.bar((bins[:-1] + width) / 3.0, tmp * 3.0, width=width / 3.0,
+        #          color=colors[k], alpha=0.5, edgecolor='k', label="Simulated")
+        plt.plot(bins[:-1] / 3.0, np.cumsum(tmp),
+                 '-k', label="Rec", lw=1)
+
+        ibins = bins.astype(int)
+        plt.plot(ibins[:-1] / 3.0,
+                 g.cdf(ibins[1:]),
+                 ':k', label="Mkv", lw=1)
+
+        # Set axis labels
+        if k >= 4:
+            plt.xlabel("duration (s)", fontsize=6, labelpad=0)
+
+        plt.ylim(0, 1)
+        if k % 4 == 0:
+            plt.ylabel("cdf", fontsize=6)
+            plt.yticks([0, 0.5, 1.0])
+        else:
+            plt.yticks([])
+        plt.gca().tick_params(labelsize=5)
+
+        if k == 7:
+            plt.legend(loc="lower right", fontsize=5, labelspacing=.5, handlelength=2)
+
+
+        plt.title("state {}".format(k+1), y=0.95, fontsize=8)
+
+        plt.tight_layout(pad=0.2)
+
+    if results_dir is not None:
+        plt.savefig(os.path.join(results_dir, "durations_cdfs.pdf"))
+
 
 def plot_x_at_changepoints(zs, xs, window=9, colors=None,
                            basename="x_cp_avg",
@@ -1597,46 +1676,40 @@ def plot_driven_transition_mod(u_values,
     condition_names = ["Cond {} ({} - {})".format(i+1, u_values[1] - u_values[0]) for i in range(N_trans)] \
       if condition_names is None else condition_names
 
-    gs = gridspec.GridSpec(1, 4, width_ratios=[1, 1, 1, 1.])
-
     # Get the differential effect of O2 = 21% - O2 = 10%
-    lim = 0
     effects = []
     for i in range(N_trans):
         w = trans_distns[i].W[-1][perm]
         effects.append(w * (u_values[1] - u_values[0]))
-        lim = max(lim, abs(effects[-1]).max())
+    lim = abs(np.array(effects)).max()
 
-    # Get plotting limits
-    
-    fig = plt.figure(figsize=(5.5, 2))
+    pad = 0.2
+    left = 0.3
+    fwidth = 2.5
+    width = (fwidth - left - 3 * pad) / 4
+    fig = plt.figure(figsize=(fwidth, 1))
+
     for i in range(N_trans):
-        ax = fig.add_subplot(gs[0,i])
+        ax = create_axis_at_location(fig, left + i * (width + pad), 0.05, width, 0.75)
+
         eff = effects[i]
         for k in range(K):
             ax.bar(k, eff[k], width=0.8, color=colors[k])
-        ax.plot([-0.5, K-0.5], [0, 0], '-k', lw=1)
-        ax.set_title(condition_names[i])
-        # ax.set_xlabel("$z_{t+1}$", labelpad=10)
+        ax.plot([-1, K], [0, 0], '-k', lw=1)
+
+        ax.set_title(condition_names[i], fontsize=8)
+        ax.tick_params(labelsize=6)
         ax.set_xticks([])
+        ax.set_xlim(-1, K)
         if i == 0:
-          ax.set_ylabel("log effect")
+          ax.set_ylabel("log effect of O$_2$", fontsize=8, labelpad=-1)
         ax.set_ylim(-1.1 * lim, 1.1 * lim)
 
         ax.spines["top"].set_visible(False)
         ax.spines["bottom"].set_visible(False)
         ax.spines["right"].set_visible(False)
-        # ax = fig.add_subplot(2, N_trans, N_trans + i + 1)
-        # trans_matrix = trans_distns[i].get_trans_matrices(
-        #     [np.concatenate((np.zeros(N_cov - 1), [u_values[1]]))])[0]
-        # _plot_transition_matrix(ax, trans_matrix, colors=colors, cmap=gradient_cmap(colors), vmax=1)
-        # ax.set_title("Cond. {} (Input={})".format(i + 1, u_values[1]))
-        # ax.set_xlabel("$z_{t+1}$", labelpad=10)
-        # if i == 0:
-        #     ax.set_ylabel("$z_t$", labelpad=10)
 
-    plt.tight_layout(pad=0.5, rect=(0,0,1,0.9))
-    fig.suptitle("Effects O2 level (21% - 10%)")
+    # fig.suptitle("Effects O2 level (21% - 10%)")
 
     if results_dir is not None:
         plt.savefig(os.path.join(results_dir, "driven_trans_matrices_mod.pdf"))

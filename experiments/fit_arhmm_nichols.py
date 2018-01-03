@@ -11,7 +11,7 @@ from tqdm import tqdm
 
 # Plotting stuff
 import matplotlib
-matplotlib.use("Agg")
+# matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from hips.plotting.colormaps import gradient_cmap
 import seaborn as sns
@@ -61,6 +61,9 @@ from zimmer.plotting import plot_3d_continuous_states, plot_2d_continuous_states
     plot_state_usage_by_worm_matrix, plot_duration_histogram, plot_driven_transition_matrices, \
     plot_driven_transition_mod
 
+from hips.plotting.layout import create_axis_at_location
+from hips.plotting.colormaps import white_to_color_cmap
+
 # LDS Results
 lds_dir = os.path.join("results", "nichols", "2017-11-13-hlds", "run001")
 assert os.path.exists(lds_dir)
@@ -71,13 +74,17 @@ assert os.path.exists(results_dir)
 fig_dir = os.path.join(results_dir, "figures")
 
 # Datasets
-worms_groups_conditions = [(i, 0, "n2_1_prelet") for i in range(11)] + \
-                          [(i, 1, "n2_2_let") for i in range(12)] + \
-                          [(i, 2, "npr1_1_prelet") for i in range(10)] + \
-                          [(i, 3, "npr1_2_let") for i in range(11)]
+from zimmer.io import WormData
+condition_names = ["n2_1_prelet", "n2_2_let", "npr1_1_prelet", "npr1_2_let"]
+short_condition_names = ["N2 pre-leth.", "N2 leth.", "npr1 pre-leth.", "npr1 leth."]
+worms_groups_conditions = [(i, 0, condition_names[0]) for i in range(11)] + \
+                          [(i, 1, condition_names[1]) for i in range(12)] + \
+                          [(i, 2, condition_names[2]) for i in range(10)] + \
+                          [(i, 3, condition_names[3]) for i in range(11)]
 worm_names = ["{} worm {}".format(condition, i)
               for (i, group, condition) in worms_groups_conditions]
 N_worms = len(worms_groups_conditions)
+N_groups = 4
 
 # Fitting parameters
 N_lags = 1
@@ -105,6 +112,54 @@ def cached(results_name):
     return _cache
 
 
+def load_data(include_unnamed=True):
+    # Load the data
+    worm_datas = [WormData(i,
+                           name=worm_names[j],
+                           version="nichols",
+                           condition=condition)
+                  for j, (i, g, condition) in enumerate(worms_groups_conditions)]
+
+    # Get the "true" discrete states as labeled by Zimmer
+    z_trues = [wd.zimmer_states for wd in worm_datas]
+    z_trues, newlabels = relabel_by_usage(z_trues, return_mapping=True)
+
+    # Get the key
+    # z_key = load_kato_key()
+    z_key = worm_datas[0].zimmer_state_names
+    z_key = [z_key[i] for i in np.argsort(newlabels)]
+
+    # Get the names of the neurons
+    neuron_names = np.unique(np.concatenate([wd.neuron_names for wd in worm_datas]))
+    if not include_unnamed:
+        print("Only including named neurons.")
+        neuron_names = neuron_names[:73]
+    else:
+        print("Including all neurons, regardless of whether they were identified.")
+
+    N_neurons = neuron_names.size
+    print("{} neurons across all {} worms".format(N_neurons, len(worms_groups_conditions)))
+
+    # Construct a big dataset with all neurons for each worm
+    ys = []
+    masks = []
+    us = []
+    for wd in worm_datas:
+        y_indiv = getattr(wd, "dff_diff")
+        y = np.zeros((wd.T, N_neurons))
+        mask = np.zeros((wd.T, N_neurons), dtype=bool)
+        indices = wd.find_neuron_indices(neuron_names)
+        for n, index in enumerate(indices):
+            if index is not None:
+                y[:, n] = y_indiv[:, index]
+                mask[:, n] = True
+
+        ys.append(y)
+        masks.append(mask)
+        us.append(wd.stimulus)
+
+    return ys, masks, us, z_trues, z_key, neuron_names
+
 def _fit_model_wrapper(K, alpha=3, gamma=100., kappa=100.,
                        is_hierarchical=True,
                        is_robust=True,
@@ -128,7 +183,7 @@ def _fit_model_wrapper(K, alpha=3, gamma=100., kappa=100.,
         else:
             model_class = ARWeakLimitStickyHDPHMM
 
-    D_in = D_latent if not is_driven else D_latent + 1
+    D_in = D_latent if not is_driven else D_latent + 2
 
     model_kwargs = \
         dict(alpha=alpha, gamma=gamma, kappa=kappa) if not is_recurrent else \
@@ -261,8 +316,17 @@ def plot_likelihoods(Ks, final_lls, hlls, best_index,
 
 def fit_all_models(Ks=np.arange(4, 21, 2)):
     axs = None
-    for index, (is_hierarchical, is_robust, is_recurrent, is_driven) in \
-            enumerate(it.product(*([(True, False)] * 4))):
+    is_hierarchical = True
+    is_robust = True
+    is_recurrent = True
+    # for index, (is_hierarchical, is_robust, is_recurrent, is_driven) in \
+    #         enumerate(it.product(*([(True, False)] * 4))):
+
+    all_models = []
+    all_lls = []
+    all_hlls = []
+
+    for index, is_driven in enumerate([True, False]):
 
         models = []
         llss = []
@@ -283,7 +347,8 @@ def fit_all_models(Ks=np.arange(4, 21, 2)):
                 partial(_fit_model_wrapper,
                         is_hierarchical=is_hierarchical,
                         is_robust=is_robust,
-                        is_recurrent=is_recurrent))
+                        is_recurrent=is_recurrent,
+                        is_driven=is_driven))
             mod, lls, hll, z_smpls = fit(K)
 
             # Append results
@@ -300,9 +365,15 @@ def fit_all_models(Ks=np.arange(4, 21, 2)):
         axs = plot_likelihoods(Ks, final_lls, hlls, best_index,
                                name=name, color=colors[index], axs=axs)
 
+        all_models.append(models)
+        all_lls.append(np.array(llss))
+        all_hlls.append(np.array(hlls))
+
     plt.tight_layout()
     plt.legend(loc="lower right")
     plt.savefig(os.path.join(fig_dir, "dimensionality.pdf".format(name)))
+
+    return all_models, all_lls, all_hlls
 
 
 def fit_best_model(K=8,
@@ -407,6 +478,8 @@ def plot_best_model_results(do_plot_expected_states=True,
                             do_plot_latent_trajectories_vs_time=True,
                             do_plot_duration_histogram=True,
                             do_plot_driven_trans_matrices=True,
+                            do_plot_state_probs=True,
+                            do_plot_state_triggered_average=True,
                             T_sim=10*3):
     # Plot the expected states and changepoint probabilities
     if do_plot_expected_states:
@@ -488,25 +561,19 @@ def plot_best_model_results(do_plot_expected_states=True,
 
     if do_plot_state_overlap:
         # Combine states from each condition
-        condition_names = ["n2_1_prelet", "n2_2_let", "npr1_1_prelet", "npr1_2_let"]
-        titles = ["N2 pre-leth.", "N2 leth.", "npr1 pre-leth.", "npr1 leth."]
-        for condition, title in zip(condition_names, titles):
-            filename = condition + "_overlap.pdf"
-            plot_state_overlap([np.concatenate([z_finals[i] for i in range(len(z_finals)) if worms_groups_conditions[i][2] == condition])],
-                               [np.concatenate([z_trues[i][N_lags:] for i in range(len(z_finals)) if worms_groups_conditions[i][2] == condition])],
-                               z_key=z_key,
-                               z_colors=zimmer_colors,
-                               titles=[title],
-                               filename=filename,
-                               results_dir=fig_dir)
+        # for condition, title in zip(condition_names, short_condition_names):
+        #     plot_state_overlap([np.concatenate([z_finals[i] for i in range(len(z_finals)) if worms_groups_conditions[i][2] == condition])],
+        #                        [np.concatenate([z_trues[i][N_lags:] for i in range(len(z_finals)) if worms_groups_conditions[i][2] == condition])],
+        #                        z_key=z_key,
+        #                        z_colors=zimmer_colors,
+        #                        titles=[title],
+        #                        results_dir=fig_dir)
 
-        filename = condition + "overlap_total.pdf"
         plot_state_overlap([np.concatenate([z_finals[i] for i in range(len(z_finals))])],
                            [np.concatenate([z_trues[i][N_lags:] for i in range(len(z_finals))])],
                            z_key=z_key,
                            z_colors=zimmer_colors,
-                           titles=[title],
-                           filename=filename,
+                           titles=["state overlap"],
                            results_dir=fig_dir)
 
         plt.close("all")
@@ -553,15 +620,17 @@ def plot_best_model_results(do_plot_expected_states=True,
                                results_dir=fig_dir)
 
     if do_plot_latent_trajectories_vs_time:
+        plot_slice = (5 * 60 * 3, 10 * 60 * 3)
         plot_latent_trajectories_vs_time(xs, z_finals,
-                                         plot_slice=(0, 1000),
+                                         plot_slice=plot_slice,
                                          title="Inferred segmentation",
                                          basename="x_segmentation",
                                          colors=colors,
                                          results_dir=fig_dir)
+        plt.close("all")
 
         plot_latent_trajectories_vs_time(xs, z_trues,
-                                         plot_slice=(0, 1000),
+                                         plot_slice=plot_slice,
                                          title="Manual segmentation",
                                          basename="x_segmentation_zimmer",
                                          colors=zimmer_colors,
@@ -585,8 +654,211 @@ def plot_best_model_results(do_plot_expected_states=True,
 
         plot_driven_transition_mod([-0.7072, 1.4139], best_model.trans_distns,
                                    perm=perm,
-                                   condition_names=["N2 pre-leth.", "N2 leth.", "npr1 pre-leth.", "npr1 leth."],
+                                   condition_names=short_condition_names,
                                    results_dir=fig_dir)
+        plt.close("all")
+
+    if False:
+        # Plot state usage over time
+        plt.subplot(N_groups, 1, 1)
+
+        groups = np.array([wgc[1] for wgc in worms_groups_conditions])
+        T = np.max(Ts) - N_lags
+        p_active = np.zeros((N_groups, T))
+        avg_E_z = np.zeros((N_groups, T, best_model.num_states))
+        for g in range(N_groups):
+            # Compute active probability vs time averaged over worms in group
+            for i in range(N_worms):
+                if groups[i] == g:
+                    Ti = Ts[i] - N_lags
+                    p_active[g, :Ti] += 1 - E_zs[i][:,0]
+                    avg_E_z[g, :Ti, :] += E_zs[i]
+
+            p_active[g] /= np.sum(groups == g)
+            avg_E_z[g] /= np.sum(groups == g)
+
+            plt.subplot(N_groups, 1, g + 1)
+
+            # Plot the o2 on period
+            o2 = np.where(us[0] > 0)[0]
+            o2_start, o2_stop = o2.min(), o2.max()
+            plt.fill_between(np.array([o2_start, o2_stop]) / 60 / 3,
+                             np.zeros(2), np.ones(2),
+                             color='k', alpha=0.25, label="O$_2$ = 21%")
+
+            # Plot the average probability of each state
+            for k in range(best_model.num_states):
+                plt.plot(np.arange(T) / 3 / 60, avg_E_z[g,:,k], color=colors[k], lw=1,
+                         # label="state {}".format(k+1)
+                         )
+
+            # Plot the active probability
+            plt.plot(np.arange(T) / 3 / 60, p_active[g], color='k', label="all active states")
+
+            # Labels
+            plt.ylabel("probability")
+            plt.ylim(0, 1)
+
+            if g == N_groups - 1:
+                plt.xlabel("time (min)")
+                plt.legend(loc="upper right")
+            else:
+                plt.xticks([])
+            plt.xlim(0, T / 3 / 60)
+
+            plt.title(short_condition_names[g])
+
+        plt.tight_layout()
+        plt.show()
+
+    if do_plot_state_probs:
+        # Plot state usage over time
+        fheight = 2
+        oheight = .35
+        pheight = (fheight - oheight - .25) / 4
+        pad = .1
+        assert pheight > pad
+        fig = plt.figure(figsize=(4.5, fheight))
+
+        # Plot the o2 on period
+        T = np.min(Ts) - N_lags
+        o2 = us[0][:T] > 0
+        o2_inds = np.where(o2)[0]
+        o2_start, o2_stop = o2_inds.min(), o2_inds.max()
+
+        ax1 = create_axis_at_location(fig, 0.7, fheight-oheight, 3.7, 0.15)
+        ax1.imshow(o2[None, :], vmin=0, vmax=1,
+                   cmap=white_to_color_cmap(0.75 * np.ones(3)), aspect="auto")
+        ax1.text(o2_start / 2, 0.25, "O$_2$=10%", fontsize=6, horizontalalignment='center')
+        ax1.text((o2_start + o2_stop) / 2, 0.25, "O$_2$=21%", fontsize=6, horizontalalignment='center')
+        ax1.text((o2_stop + T) / 2, 0.25, "O$_2$=10%", fontsize=6, horizontalalignment='center')
+        ax1.set_xticks([])
+        ax1.set_yticks([])
+
+        groups = np.array([wgc[1] for wgc in worms_groups_conditions])
+        for g in range(N_groups):
+            # Compute active probability vs time averaged over worms in group
+            avg_E_z = np.zeros((T, best_model.num_states))
+            for i in range(N_worms):
+                if groups[i] == g:
+                    avg_E_z[:T, :] += E_zs[i][:T]
+            avg_E_z /= np.sum(groups == g)
+
+            # optionally smooth E_z
+            from scipy.ndimage import gaussian_filter1d
+            avg_E_z = gaussian_filter1d(avg_E_z, axis=0, sigma=6)
+
+            cum_E_z = np.cumsum(avg_E_z, axis=1)
+            cum_E_z = np.column_stack((np.zeros(T), cum_E_z))
+            assert np.allclose(cum_E_z[:, -1], 1.0)
+
+            # Make a mountain plot
+            offset = pheight * (N_groups - g - 1)
+            ax = create_axis_at_location(fig, 0.7, 0.25 + offset, 3.7, pheight - pad)
+
+            # Make a mountain plot
+            for k in range(best_model.num_states):
+                ax.fill_between(np.arange(T) / 60 / 3,
+                                 cum_E_z[:,k], cum_E_z[:,k+1],
+                                 color=colors[k])
+
+                if k < best_model.num_states-1:
+                    ax.plot(np.arange(T) / 60 / 3, cum_E_z[:,k+1],
+                                 color='gray', lw=0.05)
+
+            ax.plot(np.array([o2_start, o2_start]) / 60 / 3, [0, 1], '-k', lw=1)
+            ax.plot(np.array([o2_stop, o2_stop]) / 60 / 3, [0, 1], '-k', lw=1)
+
+            # Labels
+            ax.tick_params(labelsize=6)
+            ax.set_ylabel("{}\nstate usage".format(short_condition_names[g]),
+                          rotation=0, fontsize=6, labelpad=20)
+            ax.set_ylim(1, 0)
+            ax.set_yticks([0, 1])
+
+            if g == N_groups - 1:
+                ax.set_xlabel("time (min)", fontsize=6, labelpad=0)
+                # plt.legend(loc="upper right")
+            else:
+                ax.set_xticks([])
+            ax.set_xlim(0, T / 3 / 60)
+
+            # plt.title(short_condition_names[g], fontsize=6, y=0.9)
+
+        plt.savefig(os.path.join(fig_dir, "state_usage_vs_time.pdf"))
+        plt.show()
+
+    if do_plot_state_triggered_average:
+        # find all the times where we enter state k
+        k = 7
+        Tpre, Tpost = 15 * 3, 30 * 3
+        xks = np.nan * np.zeros((1000, Tpre + Tpost, D_latent))
+        index = 0
+
+        from pyhsmm.util.general import rle
+        for x, z in zip(xs, z_finals):
+            labels, durs = rle(z)
+            offset = 0
+            for l, d in zip(labels, durs):
+                if l == k:
+                    tstart = max(0, offset - Tpre)
+                    dpre = offset - tstart
+                    tstop = min(offset + d, offset + Tpost, z.size)
+                    dpost = tstop - offset
+                    xks[index, Tpre-dpre:Tpre+dpost] = x[tstart:tstop]
+                    index += 1
+                offset += d
+
+        # compute the mean and standard deviation of the states
+        sta = np.nanmean(xks, axis=0)
+        sta_std = np.nanstd(xks, axis=0)
+        lim = max(abs(sta + sta_std).max(), abs(sta - sta_std).max())
+        lim /= 2
+        nstd = 1
+
+        # Plot the state triggered average
+        fig = plt.figure(figsize=(1.15, 1.5))
+        ax = create_axis_at_location(fig, 0.3, 0.3, .75, .9)
+        for d in range(D_latent):
+            offset = -d * 2 * lim
+            plt.fill_between(np.arange(-Tpre, Tpost) / 3.,
+                             offset + sta[:, d] - nstd * sta_std[:, d],
+                             offset + sta[:, d] + nstd * sta_std[:, d],
+                             color=colors[k], alpha=0.25)
+            plt.plot(np.arange(-Tpre, Tpost) / 3., offset + sta[:, d], color=colors[k])
+
+            # Draw lines around the standard deviation
+            plt.plot(np.arange(-Tpre, Tpost) / 3.,
+                     offset + sta[:, d] + nstd * sta_std[:,d],
+                     color=colors[k], lw=0.25)
+            plt.plot(np.arange(-Tpre, Tpost) / 3.,
+                     offset + sta[:, d] - nstd * sta_std[:,d],
+                     color=colors[k], lw=0.25)
+
+
+        yl = (-(D_latent-1)* 2 * lim - lim, lim)
+        plt.plot([0, 0], yl, ':k')
+
+        # Draw arrows to denote peak activation
+        plt.plot(7, yl[0], '^k', markersize=8)
+        plt.plot(7, yl[1], 'vk', markersize=8)
+
+        # Labels
+        plt.ylim(yl)
+        plt.yticks(-np.arange(D_latent) * 2 * lim, np.arange(D_latent)+1)
+        plt.ylabel("latent dimension", fontsize=6)
+        plt.xlabel("time (sec)", fontsize=6)
+        plt.xlim(-Tpre / 3.0, Tpost / 3.0)
+        plt.xticks([-Tpre / 3, 0, Tpost/3])
+        plt.tick_params(labelsize=6)
+        plt.title("state-triggered\naverage", fontsize=8)
+        plt.savefig(os.path.join(fig_dir, "sta_{}.pdf".format(k+1)))
+        plt.close("all")
+
+        # Now project the STA into neural space
+        import ipdb; ipdb.set_trace()
+        most_tuned_inds = np.argsort(abs(C_norm.dot(sta[Tpre+7*3])))
+        neural_sta = sta.dot(C_norm.T)
 
 
 # Using the smoothed states, run each model forward making predictions
@@ -612,8 +884,11 @@ def rolling_predictions(T_pred, worm, N_sim=50):
 
 if __name__ == "__main__":
     # Load the continuous states found with the LDS
+    ys, ms, us, z_trues, z_true_key, neuron_names = load_data(include_unnamed=False)
+
     with open(os.path.join(lds_dir, "lds_data.pkl"), "rb") as f:
         lds_results = pickle.load(f)
+
 
     D_latent = lds_results['D_latent']
     xtrains = lds_results['xtrains']
@@ -624,8 +899,8 @@ if __name__ == "__main__":
     us = [np.concatenate((utr, ute)) for utr, ute in zip(utrains, utests)]
 
     # Standardize the inputs
-    umean = np.mean(np.concatenate(us))
-    ustd = np.std(np.concatenate(us))
+    umean = np.mean(np.concatenate(us), axis=0, keepdims=True)
+    ustd = np.std(np.concatenate(us), axis=0, keepdims=True)
     standardize_all = lambda uu: [(u-umean)/ustd for u in uu]
     utrains = standardize_all(utrains)
     utests = standardize_all(utests)
@@ -646,7 +921,7 @@ if __name__ == "__main__":
     d = lds_results['best_model'].D[:,0]
     N_clusters = lds_results['N_clusters']
     neuron_clusters = lds_results['neuron_clusters']
-    C_norm = C[:, :-1] / np.linalg.norm(C[:, :-1], axis=1)[:, None]
+    C_norm = C / np.linalg.norm(C, axis=1)[:, None]
     C_clusters = np.array([C[neuron_clusters == c].mean(0) for c in range(N_clusters)])
     d_clusters = np.array([d[neuron_clusters == c].mean(0) for c in range(N_clusters)])
 
@@ -667,11 +942,11 @@ if __name__ == "__main__":
                           etasq=0.01,
                           affine=True)
 
-    Ks = np.arange(4, 11, 2)
-    fit_all_models(Ks)
+    Ks = [8]
+    all_models, all_lls, all_hlls = fit_all_models(Ks)
 
     # Fit the best model
-    best_model, lls, hll =\
+    best_model, best_lls, best_hll =\
         fit_best_model(K=8,
                        is_hierarchical=True,
                        is_recurrent=True,
@@ -696,6 +971,11 @@ if __name__ == "__main__":
     print("State usage:")
     print(best_model.state_usages[perm])
 
+    # Relabel the expected states
+    E_zs = []
+    for s in best_model.states_list:
+        E_zs.append(s.expected_states[:,perm])
+
     # x_trajss, x_simss = simulate_trajectories()
     sim = cached("simulations")(simulate_trajectories)
     x_trajss, x_simss = sim(min_sim_dur=0, N_sims=1000, T_sim=100 * 3)
@@ -708,20 +988,22 @@ if __name__ == "__main__":
         do_plot_dynamics_3d=False,
         do_plot_dynamics_2d=False,
         do_plot_state_overlap=False,
-        do_plot_state_usage=True,
+        do_plot_state_usage=False,
         do_plot_transition_matrices=False,
         do_plot_simulated_trajs=False,
         do_plot_recurrent_weights=False,
         do_plot_x_at_changepoints=False,
         do_plot_latent_trajectories_vs_time=False,
         do_plot_duration_histogram=False,
-        do_plot_driven_trans_matrices=False
+        do_plot_driven_trans_matrices=False,
+        do_plot_state_probs=False,
+        do_plot_state_triggered_average=True
     )
 
     # Rolling predictions
     # z_preds, x_preds = rolling_predictions(T_pred=6, worm=0)
     # z_preds = relabel_by_permutation(z_preds, iperm)
-    #
+
     # make_state_predictions_3d_movie(
     #     best_model.states_list[0].stateseq,
     #     xs[0],
