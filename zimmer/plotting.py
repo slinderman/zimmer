@@ -1670,9 +1670,10 @@ def plot_driven_transition_matrices(u_index,
         plt.savefig(os.path.join(results_dir, "driven_trans_matrices.pdf"))
 
 
-def plot_driven_transition_mod(u_index,
+def plot_driven_transition_mod(D_input,
                                u_values,
                                trans_distns,
+                               ylabels,
                                colors=None,
                                perm=None,
                                results_dir=None,
@@ -1681,46 +1682,52 @@ def plot_driven_transition_mod(u_index,
     N_trans = len(trans_distns)
     K = trans_distns[0].num_states
     perm = np.arange(K) if perm is None else perm
-    condition_names = ["Cond {} ({} - {})".format(i+1, u_values[1] - u_values[0]) for i in range(N_trans)] \
-      if condition_names is None else condition_names
 
-    # Get the differential effect of O2 = 21% - O2 = 10%
-    effects = []
-    for i in range(N_trans):
-        w = trans_distns[i].W[-2+u_index][perm]
-        effects.append(w * (u_values[1] - u_values[0]))
-    lim = abs(np.array(effects)).max()
+    pad = 0.25
+    left = 0.5
+    fwidth = 2.75
+    width = (fwidth - left - 3 * pad - .1) / 4
+    height = .5
+    fig = plt.figure(figsize=(fwidth, height * D_input + .25))
 
-    pad = 0.2
-    left = 0.3
-    fwidth = 2.5
-    width = (fwidth - left - 3 * pad) / 4
-    fig = plt.figure(figsize=(fwidth, 1))
+    for j in range(D_input):
+        # Get the differential effect of the input
+        condition_names = ["Cond {} ({} - {})".
+                               format(i + 1, u_values[j][1] - u_values[j][0]) for i in range(N_trans)] \
+            if condition_names is None else condition_names
 
-    for i in range(N_trans):
-        ax = create_axis_at_location(fig, left + i * (width + pad), 0.05, width, 0.75)
+        effects = []
+        for i in range(N_trans):
+            w = trans_distns[i].W[-D_input + j][perm]
+            effects.append(w * (u_values[j][1] - u_values[j][0]))
+        lim = abs(np.array(effects)).max()
 
-        eff = effects[i]
-        for k in range(K):
-            ax.bar(k, eff[k], width=0.8, color=colors[k])
-        ax.plot([-1, K], [0, 0], '-k', lw=1)
+        for i in range(N_trans):
+            ax = create_axis_at_location(fig, left + i * (width + pad), (D_input - j - 1) * height + 0.05, width, height-0.05)
 
-        ax.set_title(condition_names[i], fontsize=8)
-        ax.tick_params(labelsize=6)
-        ax.set_xticks([])
-        ax.set_xlim(-1, K)
-        if i == 0:
-          ax.set_ylabel("log effect of O$_2$", fontsize=8, labelpad=-1)
-        ax.set_ylim(-1.1 * lim, 1.1 * lim)
+            eff = effects[i]
+            for k in range(K):
+                ax.bar(k, eff[k], width=0.8, color=colors[k])
+            ax.plot([-1, K], [0, 0], '-k', lw=1)
 
-        ax.spines["top"].set_visible(False)
-        ax.spines["bottom"].set_visible(False)
-        ax.spines["right"].set_visible(False)
+            ax.tick_params(labelsize=6)
+            ax.set_xticks([])
+            ax.set_xlim(-1, K)
+            if i == 0:
+              ax.set_ylabel(ylabels[j], fontsize=6, labelpad=-1)
+            ax.set_ylim(-1.1 * lim, 1.1 * lim)
+
+            ax.spines["top"].set_visible(False)
+            ax.spines["bottom"].set_visible(False)
+            ax.spines["right"].set_visible(False)
+
+            if j == 0:
+                ax.set_title(condition_names[i], fontsize=7)
 
     # fig.suptitle("Effects O2 level (21% - 10%)")
 
     if results_dir is not None:
-        plt.savefig(os.path.join(results_dir, "driven_trans_matrices_mod_{}.pdf".format(u_index)))
+        plt.savefig(os.path.join(results_dir, "driven_trans_matrices_mod.pdf"))
         # plt.savefig(os.path.join(results_dir, "driven_trans_matrices_mod.png"), dpi=300)
 
 

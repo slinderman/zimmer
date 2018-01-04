@@ -390,23 +390,40 @@ def plot_best_model_results(best_model,
         sigma_obs_mask = np.array([np.any(~m, axis=0) for m in ms])
         sigma_obs[sigma_obs_mask] = np.nan
 
+        # Plot observed neurons instead
+        sigma_obs = np.array([m[0] for m in ms], dtype=np.float)
+        sigma_obs[sigma_obs_mask] = np.nan
+
         cmap = gradient_cmap([np.ones(3), colors[0]])
         cmap.set_bad(0.7 * np.ones(3))
 
-        fig = plt.figure(figsize=(5.5, 2.))
+        fig = plt.figure(figsize=(1.5, 5.))
         ax = fig.add_subplot(111)
-        im = ax.imshow(np.sqrt(sigma_obs), vmin=0, aspect="auto", cmap=cmap)
-        ax.set_xticks(np.arange(D_obs))
-        ax.set_xticklabels(neuron_names, rotation="90", fontsize=5)
-        ax.set_yticks(np.arange(0, N_worms, 5))
-        ax.set_yticklabels(np.arange(0, N_worms, 5) + 1)
-        ax.set_ylabel("Worm")
+        im = ax.imshow(np.sqrt(sigma_obs).T, vmin=0, aspect="auto", cmap=cmap)
 
-        ax.set_title("$\sigma_{\mathsf{obs}}$")
+        group_sizes = np.array([11, 12, 10, 11])
+        for w in np.cumsum(group_sizes)[:-1]:
+            plt.plot([w, w], [-0.5, D_obs-0.5], ':k')
+        plt.xlim(-0.5, N_worms-0.5)
+        plt.ylim(D_obs-0.5, -0.5)
 
-        plt.colorbar(im)
+
+        ax.set_yticks(np.arange(D_obs))
+        ax.set_yticklabels(neuron_names, rotation="0", fontsize=5)
+        ax.set_xticks([])
+        # ax.set_xticks(np.arange(0, N_worms, 5))
+        # ax.set_xticklabels(np.arange(0, N_worms, 5) + 1)
+        ax.set_xlabel("worm", fontsize=8, labelpad=20)
+
+        # ax.set_title("standard deviation of\ndifferenced Ca++", fontsize=8)
+        ax.set_title("observed neurons", fontsize=8)
+
+        # divider = make_axes_locatable(ax)
+        # cax = divider.append_axes("bottom", size="1%", pad=0.5)
+        # plt.colorbar(mappable=im, cax=cax, orientation="horizontal", label="$\\sigma_{\mathrm{obs} }$")
+
         plt.tight_layout()
-        plt.savefig(os.path.join(fig_dir, "observation_variance.pdf"))
+        plt.savefig(os.path.join(fig_dir, "observation_neurons.pdf"))
 
     if do_plot_similarity:
 
@@ -748,47 +765,47 @@ if __name__ == "__main__":
 
     # Sort the states based on the correlation coefficient between their
     # 1D reconstruction of the data and the actual data
-    dim_perm = order_latent_dims(xtrains, C, ytrains, mtrains)
-    C = np.hstack((C[:, :-1][:, dim_perm], C[:, -1:]))
-    xtrains = [x[:, dim_perm] for x in xtrains]
-    xtests = [x[:, dim_perm] for x in xtests]
-
-    # Cluster the neurons based on C
-    neuron_perm, neuron_clusters = cluster_neruons(best_model)
+    # dim_perm = order_latent_dims(xtrains, C, ytrains, mtrains)
+    # C = np.hstack((C[:, :-1][:, dim_perm], C[:, -1:]))
+    # xtrains = [x[:, dim_perm] for x in xtrains]
+    # xtests = [x[:, dim_perm] for x in xtests]
+    #
+    # # Cluster the neurons based on C
+    # neuron_perm, neuron_clusters = cluster_neruons(best_model)
 
     # plot_likelihoods(final_lls, hlls, best_index)
     plot_best_model_results(best_model,
                             do_plot_x_3d=False,
                             do_plot_x_2d=False,
-                            do_plot_sigmasq=False,
+                            do_plot_sigmasq=True,
                             do_plot_similarity=False,
-                            do_plot_data=True,
+                            do_plot_data=False,
                             N_plot=N_worms)
 
     # heldout_neuron_identification()
 
     # Save out the results
-    results = dict(
-        xtrains=xtrains,
-        xtests=xtests,
-        ytrains=ytrains,
-        ytests=ytests,
-        mtrains=mtrains,
-        mtests=mtests,
-        utrains=utrains,
-        utests=utests,
-        z_true_trains=z_true_trains,
-        z_true_tests=z_true_tests,
-        z_key=z_true_key,
-        best_model=best_model,
-        D_latent=best_model.D_latent,
-        C=C,
-        perm=dim_perm,
-        N_clusters=N_clusters,
-        neuron_clusters=neuron_clusters,
-        neuron_perm=neuron_perm,
-        neuron_names=neuron_names,
-    )
-
-    with open(os.path.join(results_dir, "lds_data.pkl"), "wb") as f:
-        pickle.dump(results, f)
+    # results = dict(
+    #     xtrains=xtrains,
+    #     xtests=xtests,
+    #     ytrains=ytrains,
+    #     ytests=ytests,
+    #     mtrains=mtrains,
+    #     mtests=mtests,
+    #     utrains=utrains,
+    #     utests=utests,
+    #     z_true_trains=z_true_trains,
+    #     z_true_tests=z_true_tests,
+    #     z_key=z_true_key,
+    #     best_model=best_model,
+    #     D_latent=best_model.D_latent,
+    #     C=C,
+    #     perm=dim_perm,
+    #     N_clusters=N_clusters,
+    #     neuron_clusters=neuron_clusters,
+    #     neuron_perm=neuron_perm,
+    #     neuron_names=neuron_names,
+    # )
+    #
+    # with open(os.path.join(results_dir, "lds_data.pkl"), "wb") as f:
+    #     pickle.dump(results, f)

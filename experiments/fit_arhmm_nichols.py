@@ -11,7 +11,7 @@ from tqdm import tqdm
 
 # Plotting stuff
 import matplotlib
-matplotlib.use("Agg")
+# matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from hips.plotting.colormaps import gradient_cmap
 import seaborn as sns
@@ -650,17 +650,19 @@ def plot_best_model_results(do_plot_expected_states=True,
         #                                 condition_names=["N2 pre-leth.", "N2 leth.", "npr1 pre-leth.", "npr1 leth."],
         #                                 results_dir=fig_dir)
 
-        plot_driven_transition_mod(0, [-0.7, 1.4],
+        plot_driven_transition_mod(2, [[-0.7, 1.4], [0, 28]],
                                    best_model.trans_distns,
+                                   ["log effect\n(O$_2$)", "log effect\n($\\Delta$O$_2$)"],
                                    perm=perm,
                                    condition_names=short_condition_names,
                                    results_dir=fig_dir)
 
-        plot_driven_transition_mod(1, [0, 28],
-                                   best_model.trans_distns,
-                                   perm=perm,
-                                   condition_names=short_condition_names,
-                                   results_dir=fig_dir)
+        # plot_driven_transition_mod(1, [0, 28],
+        #                            best_model.trans_distns,
+        #                            perm=perm,
+        #                            condition_names=short_condition_names,
+        #                            ylabel="log effect of $\\Delta$O$_2$",
+        #                            results_dir=fig_dir)
 
         plt.close("all")
 
@@ -798,6 +800,7 @@ def plot_best_model_results(do_plot_expected_states=True,
         # find all the times where we enter state k
         k = 7
         Tpre, Tpost = 15 * 3, 30 * 3
+        tt = np.arange(-Tpre, Tpost) / 3.0
         xks = np.nan * np.zeros((1000, Tpre + Tpost, D_latent))
         index = 0
 
@@ -823,26 +826,25 @@ def plot_best_model_results(do_plot_expected_states=True,
         nstd = 1
 
         # Plot the state triggered average
-        fig = plt.figure(figsize=(1.15, 1.5))
-        ax = create_axis_at_location(fig, 0.3, 0.3, .75, .9)
+        fig = plt.figure(figsize=(1.3, 1.5))
+        ax = create_axis_at_location(fig, 0.3, 0.3, .9, .9)
         for d in range(D_latent):
             offset = -d * 2 * lim
-            plt.fill_between(np.arange(-Tpre, Tpost) / 3.,
+            plt.fill_between(tt,
                              offset + sta[:, d] - nstd * sta_std[:, d],
                              offset + sta[:, d] + nstd * sta_std[:, d],
                              color=colors[k], alpha=0.25)
             plt.plot(np.arange(-Tpre, Tpost) / 3., offset + sta[:, d], color=colors[k])
 
             # Draw lines around the standard deviation
-            plt.plot(np.arange(-Tpre, Tpost) / 3.,
+            plt.plot(tt,
                      offset + sta[:, d] + nstd * sta_std[:,d],
                      color=colors[k], lw=0.25)
-            plt.plot(np.arange(-Tpre, Tpost) / 3.,
+            plt.plot(tt,
                      offset + sta[:, d] - nstd * sta_std[:,d],
                      color=colors[k], lw=0.25)
 
-
-        yl = (-(D_latent-1)* 2 * lim - lim, lim)
+        yl = (-(D_latent) * 2 * lim, 2*lim)
         plt.plot([0, 0], yl, ':k')
 
         # Draw arrows to denote peak activation
@@ -859,11 +861,55 @@ def plot_best_model_results(do_plot_expected_states=True,
         plt.tick_params(labelsize=6)
         plt.title("state-triggered\naverage", fontsize=8)
         plt.savefig(os.path.join(fig_dir, "sta_{}.pdf".format(k+1)))
-        plt.close("all")
 
         # Now project the STA into neural space
-        most_tuned_inds = np.argsort(abs(C_norm.dot(sta[Tpre+7*3])))
-        neural_sta = sta.dot(C_norm.T)
+        # most_tuned_inds = np.argsort(abs(C_norm.dot(sta[Tpre+7*3])))[::-1]
+        most_tuned_inds = np.argsort(np.linalg.norm(C_norm.dot(sta.T), axis=1))[::-1]
+        neural_sta = sta.dot(C_norm.T).T
+        neural_sta -= neural_sta.mean(axis=1, keepdims=True)
+        lim = abs(sta[most_tuned_inds][:10]).max()
+        neural_sta /= lim
+
+        # Plot the response of the most-tuned neurons
+        fig = plt.figure(figsize=(1.3, 1.5))
+        ax = create_axis_at_location(fig, 0.3, 0.3, .9, .9)
+        n_plot = 10
+        for i in range(n_plot):
+            plt.plot(tt, -i + neural_sta[most_tuned_inds[i]], color=colors[3], lw=1)
+
+        yl = (-n_plot-.5, 1.5)
+        # yl = plt.ylim()
+        plt.plot([0, 0], yl, ':k')
+        plt.ylim(yl)
+
+        plt.yticks(-np.arange(n_plot), neuron_names[most_tuned_inds[:n_plot]])
+        plt.xlabel("time (sec)", fontsize=6)
+        plt.xlim(-Tpre / 3.0, Tpost / 3.0)
+        plt.xticks([-Tpre / 3, 0, Tpost/3])
+        plt.tick_params(labelsize=5)
+        plt.title("largest\nneural responses", fontsize=8)
+        plt.savefig(os.path.join(fig_dir, "sta_neural_{}.pdf".format(k + 1)))
+
+        # Plot the response of the most-tuned neurons
+        fig = plt.figure(figsize=(1.3, 1.5))
+        ax = create_axis_at_location(fig, 0.3, 0.3, .9, .9)
+        n_plot = 10
+        for i in range(n_plot):
+            plt.plot(tt, -i + neural_sta[most_tuned_inds[-(i+1)]], color=colors[3], lw=1)
+
+        yl = (-n_plot-.5, 1.5)
+        # yl = plt.ylim()
+        plt.plot([0, 0], yl, ':k')
+        plt.ylim(yl)
+
+        plt.yticks(-np.arange(n_plot), neuron_names[most_tuned_inds[-n_plot:]])
+        plt.xlabel("time (sec)", fontsize=6)
+        plt.xlim(-Tpre / 3.0, Tpost / 3.0)
+        plt.xticks([-Tpre / 3, 0, Tpost / 3])
+        plt.tick_params(labelsize=5)
+        plt.title("smallest\nneural responses", fontsize=8)
+        plt.savefig(os.path.join(fig_dir, "sta_neural_least_{}.pdf".format(k + 1)))
+        plt.show()
 
 
 # Using the smoothed states, run each model forward making predictions
@@ -891,7 +937,7 @@ if __name__ == "__main__":
     with open(os.path.join(lds_dir, "lds_data.pkl"), "rb") as f:
         lds_results = pickle.load(f)
 
-
+    neuron_names = lds_results['neuron_names']
     D_latent = lds_results['D_latent']
     xtrains = lds_results['xtrains']
     xtests = lds_results['xtests']
@@ -988,10 +1034,10 @@ if __name__ == "__main__":
     plot_best_model_results(
         do_plot_expected_states=False,
         do_plot_x_2d=False,
-        do_plot_x_3d=True,
-        do_plot_dynamics_3d=True,
+        do_plot_x_3d=False,
+        do_plot_dynamics_3d=False,
         do_plot_dynamics_2d=False,
-        do_plot_state_overlap=True,
+        do_plot_state_overlap=False,
         do_plot_state_usage=False,
         do_plot_transition_matrices=False,
         do_plot_simulated_trajs=False,
@@ -1000,8 +1046,8 @@ if __name__ == "__main__":
         do_plot_latent_trajectories_vs_time=False,
         do_plot_duration_histogram=False,
         do_plot_driven_trans_matrices=True,
-        do_plot_state_probs=True,
-        do_plot_state_triggered_average=True
+        do_plot_state_probs=False,
+        do_plot_state_triggered_average=False
     )
 
     # Rolling predictions
