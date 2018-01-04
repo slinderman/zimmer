@@ -8,6 +8,8 @@ from tqdm import tqdm
 from functools import partial
 
 # Plotting stuff
+import matplotlib
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from hips.plotting.colormaps import gradient_cmap
@@ -48,7 +50,7 @@ from pylds.models import MissingDataLDS
 
 # IO
 run_num = 1
-results_dir = os.path.join("results", "nichols", "2017-11-13-hlds", "run{:03d}".format(run_num))
+results_dir = os.path.join("results", "nichols", "2018-01-03-hlds", "run{:03d}".format(run_num))
 signal = "dff_diff"
 
 
@@ -155,7 +157,7 @@ def _fit_lds(D_latent, alpha_0=1.0, beta_0=1.0,
     masks = mtrains if masks is None else masks
 
     if use_covariates:
-        D_in = 2
+        D_in = 3
         train_inputs = [np.column_stack((np.ones((d.shape[0], 1)), u)) for d, u in zip(datas, utrains)]
         test_inputs = [np.column_stack((np.ones((d.shape[0], 1)), u)) for d, u in zip(ytests, utests)]
     else:
@@ -715,8 +717,8 @@ if __name__ == "__main__":
     window = 20 * 3
     tau = 1 * 3
     delta_o2s = [np.concatenate(([0], np.diff(u))) for u in us]
-    delta_o2s_filt = [np.convolve(d_o2, np.exp(-np.arange(window) / tau), "full")[:-window] for d_o2 in delta_o2s]
-    us = [np.column_stack(u, d_o2) for u, d_o2 in zip(us, delta_o2s_filt)]
+    delta_o2s_filt = [np.convolve(d_o2, np.exp(-np.arange(window) / tau), "full")[:-window+1] for d_o2 in delta_o2s]
+    us = [np.column_stack((u, d_o2)) for u, d_o2 in zip(us, delta_o2s_filt)]
 
     # Split test train
     ytrains, ytests, train_inds = list(zip(*[_split_test_train(y, train_frac=0.8) for y in ys]))
@@ -726,7 +728,7 @@ if __name__ == "__main__":
     n_trains = np.array([mtr.sum() for mtr in mtrains])
     n_tests = np.array([mte.sum() for mte in mtests])
 
-    D_latents = np.arange(2, 21, 2)
+    D_latents = np.arange(2, 11, 2)
     best_models = fit_all_models(D_latents)
     best_model = best_models[0]
 
