@@ -883,9 +883,6 @@ def rolling_predictions(T_pred, worm, N_sim=50):
 
 
 if __name__ == "__main__":
-    # Load the continuous states found with the LDS
-    ys, ms, us, z_trues, z_true_key, neuron_names = load_data(include_unnamed=False)
-
     with open(os.path.join(lds_dir, "lds_data.pkl"), "rb") as f:
         lds_results = pickle.load(f)
 
