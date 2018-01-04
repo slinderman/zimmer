@@ -706,6 +706,7 @@ def plot_state_overlap(z_finals, z_trues,
                        colors=None,
                        z_colors=None,
                        titles=None,
+                       permute=True,
                        results_dir=None):
     colors = default_colors if colors is None else colors
     z_colors = default_colors if z_colors is None else z_colors
@@ -751,21 +752,26 @@ def plot_state_overlap(z_finals, z_trues,
         if results_dir is not None:
             plt.savefig(os.path.join(results_dir, filename))
 
-    # Use the Hungarian algorithm to find a permutation of states that
-    # yields the highest overlap
+    # Compute total overlap from all worms
     overlap = np.zeros((K_zimmer, Kmax), dtype=float)
     for z_true, z_inf in zip(z_trues, z_finals):
         for k1 in range(K_zimmer):
             for k2 in range(Kmax):
                 overlap[k1, k2] = np.sum((z_true == k1) & (z_inf == k2))
+                
+    if permute:
+        # Use the Hungarian algorithm to find a permutation of states that
+        # yields the highest overlap                    
+        from scipy.optimize import linear_sum_assignment
+        _, perm = linear_sum_assignment(-overlap)
 
-    from scipy.optimize import linear_sum_assignment
-    _, perm = linear_sum_assignment(-overlap)
+        # Add any unused inferred states
+        if Kmax > K_zimmer:
+            unused = np.array(list(set(np.arange(Kmax)) - set(perm)))
+            perm = np.concatenate((perm, unused))
 
-    # Add any unused inferred states
-    if Kmax > K_zimmer:
-        unused = np.array(list(set(np.arange(Kmax)) - set(perm)))
-        perm = np.concatenate((perm, unused))
+    else:
+        perm = np.arange(Kmax)
 
     # Normalize the overlap from all worms and plot
     overlap /= overlap.sum(1)[:, None]
@@ -1575,7 +1581,8 @@ def plot_x_at_changepoints(zs, xs, window=9, colors=None,
             plt.savefig(os.path.join(results_dir, basename + "_{}.pdf".format(k)))
 
 
-def plot_driven_transition_matrices(u_values,
+def plot_driven_transition_matrices(u_index,
+                                    u_values,
                                     trans_distns,
                                     z_finals,
                                     colors=None,
@@ -1663,7 +1670,8 @@ def plot_driven_transition_matrices(u_values,
         plt.savefig(os.path.join(results_dir, "driven_trans_matrices.pdf"))
 
 
-def plot_driven_transition_mod(u_values,
+def plot_driven_transition_mod(u_index,
+                               u_values,
                                trans_distns,
                                colors=None,
                                perm=None,
@@ -1679,7 +1687,7 @@ def plot_driven_transition_mod(u_values,
     # Get the differential effect of O2 = 21% - O2 = 10%
     effects = []
     for i in range(N_trans):
-        w = trans_distns[i].W[-1][perm]
+        w = trans_distns[i].W[-2+u_index][perm]
         effects.append(w * (u_values[1] - u_values[0]))
     lim = abs(np.array(effects)).max()
 
@@ -1712,8 +1720,8 @@ def plot_driven_transition_mod(u_values,
     # fig.suptitle("Effects O2 level (21% - 10%)")
 
     if results_dir is not None:
-        plt.savefig(os.path.join(results_dir, "driven_trans_matrices_mod.pdf"))
-        plt.savefig(os.path.join(results_dir, "driven_trans_matrices_mod.png"), dpi=300)
+        plt.savefig(os.path.join(results_dir, "driven_trans_matrices_mod_{}.pdf".format(u_index)))
+        # plt.savefig(os.path.join(results_dir, "driven_trans_matrices_mod.png"), dpi=300)
 
 
 def make_states_3d_movie(z_finals, x_finals, title=None, lim=None,

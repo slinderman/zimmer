@@ -11,7 +11,7 @@ from tqdm import tqdm
 
 # Plotting stuff
 import matplotlib
-# matplotlib.use("Agg")
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from hips.plotting.colormaps import gradient_cmap
 import seaborn as sns
@@ -65,11 +65,11 @@ from hips.plotting.layout import create_axis_at_location
 from hips.plotting.colormaps import white_to_color_cmap
 
 # LDS Results
-lds_dir = os.path.join("results", "nichols", "2017-11-13-hlds", "run001")
+lds_dir = os.path.join("results", "nichols", "2018-01-03-hlds", "run001")
 assert os.path.exists(lds_dir)
 
 # AR-HMM RESULTS
-results_dir = os.path.join("results", "nichols", "2017-11-14-arhmm", "run001")
+results_dir = os.path.join("results", "nichols", "2018-01-03-arhmm", "run001")
 assert os.path.exists(results_dir)
 fig_dir = os.path.join(results_dir, "figures")
 
@@ -560,21 +560,19 @@ def plot_best_model_results(do_plot_expected_states=True,
         plt.close("all")
 
     if do_plot_state_overlap:
-        # Combine states from each condition
-        # for condition, title in zip(condition_names, short_condition_names):
-        #     plot_state_overlap([np.concatenate([z_finals[i] for i in range(len(z_finals)) if worms_groups_conditions[i][2] == condition])],
-        #                        [np.concatenate([z_trues[i][N_lags:] for i in range(len(z_finals)) if worms_groups_conditions[i][2] == condition])],
-        #                        z_key=z_key,
-        #                        z_colors=zimmer_colors,
-        #                        titles=[title],
-        #                        results_dir=fig_dir)
-
-        plot_state_overlap([np.concatenate([z_finals[i] for i in range(len(z_finals))])],
-                           [np.concatenate([z_trues[i][N_lags:] for i in range(len(z_finals))])],
-                           z_key=z_key,
-                           z_colors=zimmer_colors,
-                           titles=["state overlap"],
-                           results_dir=fig_dir)
+        # Combine states from each condition        
+        plot_state_overlap(
+            [np.concatenate([z_finals[i] for i in range(len(z_finals))
+                             if worms_groups_conditions[i][2] == condition])
+             for condition in condition_names],
+            [np.concatenate([z_trues[i][N_lags:] for i in range(len(z_finals))
+                             if worms_groups_conditions[i][2] == condition])
+             for condition in condition_names],
+            z_key=z_key,
+            z_colors=zimmer_colors,
+            titles=short_condition_names,
+            permute=False,
+            results_dir=fig_dir)
 
         plt.close("all")
 
@@ -652,10 +650,18 @@ def plot_best_model_results(do_plot_expected_states=True,
         #                                 condition_names=["N2 pre-leth.", "N2 leth.", "npr1 pre-leth.", "npr1 leth."],
         #                                 results_dir=fig_dir)
 
-        plot_driven_transition_mod([-0.7072, 1.4139], best_model.trans_distns,
+        plot_driven_transition_mod(0, [-0.7, 1.4],
+                                   best_model.trans_distns,
                                    perm=perm,
                                    condition_names=short_condition_names,
                                    results_dir=fig_dir)
+
+        plot_driven_transition_mod(1, [0, 28],
+                                   best_model.trans_distns,
+                                   perm=perm,
+                                   condition_names=short_condition_names,
+                                   results_dir=fig_dir)
+
         plt.close("all")
 
     if False:
@@ -727,7 +733,7 @@ def plot_best_model_results(do_plot_expected_states=True,
         o2_start, o2_stop = o2_inds.min(), o2_inds.max()
 
         ax1 = create_axis_at_location(fig, 0.7, fheight-oheight, 3.7, 0.15)
-        ax1.imshow(o2[None, :], vmin=0, vmax=1,
+        ax1.imshow(o2[:, 0][None,:], vmin=0, vmax=1,
                    cmap=white_to_color_cmap(0.75 * np.ones(3)), aspect="auto")
         ax1.text(o2_start / 2, 0.25, "O$_2$=10%", fontsize=6, horizontalalignment='center')
         ax1.text((o2_start + o2_stop) / 2, 0.25, "O$_2$=21%", fontsize=6, horizontalalignment='center')
@@ -856,7 +862,6 @@ def plot_best_model_results(do_plot_expected_states=True,
         plt.close("all")
 
         # Now project the STA into neural space
-        import ipdb; ipdb.set_trace()
         most_tuned_inds = np.argsort(abs(C_norm.dot(sta[Tpre+7*3])))
         neural_sta = sta.dot(C_norm.T)
 
@@ -905,6 +910,8 @@ if __name__ == "__main__":
     utrains = standardize_all(utrains)
     utests = standardize_all(utests)
     us = standardize_all(us)
+    # print(np.concatenate(us).max(axis=0))
+    # print(np.concatenate(us).min(axis=0))
 
     # Get the "true" states
     z_true_trains = lds_results['z_true_trains']
@@ -977,17 +984,17 @@ if __name__ == "__main__":
         E_zs.append(s.expected_states[:,perm])
 
     # x_trajss, x_simss = simulate_trajectories()
-    sim = cached("simulations")(simulate_trajectories)
-    x_trajss, x_simss = sim(min_sim_dur=0, N_sims=1000, T_sim=100 * 3)
+    # sim = cached("simulations")(simulate_trajectories)
+    # x_trajss, x_simss = sim(min_sim_dur=0, N_sims=1000, T_sim=100 * 3)
 
     # Plot results
     plot_best_model_results(
         do_plot_expected_states=False,
         do_plot_x_2d=False,
-        do_plot_x_3d=False,
-        do_plot_dynamics_3d=False,
+        do_plot_x_3d=True,
+        do_plot_dynamics_3d=True,
         do_plot_dynamics_2d=False,
-        do_plot_state_overlap=False,
+        do_plot_state_overlap=True,
         do_plot_state_usage=False,
         do_plot_transition_matrices=False,
         do_plot_simulated_trajs=False,
@@ -995,8 +1002,8 @@ if __name__ == "__main__":
         do_plot_x_at_changepoints=False,
         do_plot_latent_trajectories_vs_time=False,
         do_plot_duration_histogram=False,
-        do_plot_driven_trans_matrices=False,
-        do_plot_state_probs=False,
+        do_plot_driven_trans_matrices=True,
+        do_plot_state_probs=True,
         do_plot_state_triggered_average=True
     )
 
