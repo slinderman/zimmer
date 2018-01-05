@@ -58,12 +58,12 @@ from zimmer.plotting import plot_3d_continuous_states, plot_2d_continuous_states
     plot_state_usage_by_worm_matrix, plot_duration_histogram, plot_duration_cdfs
 
 # LDS Results
-lds_dir = os.path.join("results", "2017-11-03-hlds", "run002")
+lds_dir = os.path.join("results", "2017-11-03-hlds", "run003")
 # lds_dir = os.path.join("results", "2017-11-03-hlds", "run003_dff_bc")
 assert os.path.exists(lds_dir)
 
 # AR-HMM RESULTS
-results_dir = os.path.join("results", "2017-11-04-arhmm", "run003")
+results_dir = os.path.join("results", "2017-11-04-arhmm", "run004")
 # results_dir = os.path.join("results", "2017-11-04-arhmm", "run004_dff_bc")
 assert os.path.exists(results_dir)
 fig_dir = os.path.join(results_dir, "figures")
@@ -552,18 +552,67 @@ def plot_best_model_results(do_plot_expected_states=True,
 
         plt.close("all")
 
-    if do_plot_eigenspectrum:
-        markers = ['o', '^', 's', 'p', 'h']
-        for i, hdd in enumerate(hier_dynamics_distns):
-            width = 1.0 if i == 0 else 0.7
-            left = 0.3 if i == 0 else 0.05
-            fig = plt.figure(figsize=(width, 1.0))
+    # if do_plot_eigenspectrum:
+    #     markers = ['o', '^', 's', 'p', 'h']
+    #     for i, hdd in enumerate(hier_dynamics_distns):
+    #         width = 1.0 if i == 0 else 0.7
+    #         left = 0.3 if i == 0 else 0.05
+    #         fig = plt.figure(figsize=(width, 1.0))
+    #
+    #         # ax = fig.add_subplot(111, aspect="equal")
+    #         from hips.plotting.layout import create_axis_at_location
+    #         ax = create_axis_at_location(fig, left, 0.2, 0.6, 0.6)
+    #         for w, dd in enumerate(hdd.regressions):
+    #             evs = np.linalg.eigvals(dd.A[:,:-1])
+    #             assert np.all(evs.real >= 0.45)
+    #             assert np.all(evs.real <= 1.2)
+    #             assert np.all(evs.imag >= -0.3)
+    #             assert np.all(evs.imag <= 0.3)
+    #
+    #             ax.plot(np.real(evs), np.imag(evs),
+    #                     ls='',
+    #                     marker=markers[w],
+    #                     # marker='o',
+    #                     markerfacecolor=colors[i],
+    #                     mec='k',
+    #                     mew=.5,
+    #                     markersize=3,
+    #                     alpha=0.75,
+    #                     label="{}".format(w+1))
+    #
+    #         ax.plot([-2.1, 1.2], [0, 0], ':k', lw=0.5)
+    #         ax.plot([0, 0], [-1.2, 1.2], ':k', lw=0.5)
+    #         ths = np.linspace(0, 2*np.pi, 100)
+    #         ax.plot(np.cos(ths), np.sin(ths), '-k', lw=0.5)
+    #         ax.set_xlim(0.4, 1.2)
+    #         ax.set_ylim(-0.25, 0.25)
+    #         ax.set_xlabel("re($\\lambda$)", labelpad=0, fontsize=6)
+    #
+    #         if i == 0:
+    #             ax.set_ylabel("im($\\lambda$)", labelpad=0, fontsize=6)
+    #             ax.set_yticks([-0.2, 0, 0.2])
+    #         else:
+    #             ax.set_yticks([])
+    #
+    #         ax.tick_params(labelsize=4)
+    #
+    #         if i == 0:
+    #             ax.legend(loc="lower right", fontsize=4,
+    #                       ncol=3, labelspacing=0.5, columnspacing=.5,
+    #                       handletextpad=.5)
+    #
+    #         ax.set_title("state {}".format(i+1), fontsize=6)
+    #         # plt.tight_layout(pad=0.05)
+    #
+    #         plt.savefig(os.path.join(fig_dir, "eigenspectrum_{}.pdf".format(i+1)))
 
-            # ax = fig.add_subplot(111, aspect="equal")
-            from hips.plotting.layout import create_axis_at_location
-            ax = create_axis_at_location(fig, left, 0.2, 0.6, 0.6)
+    if do_plot_eigenspectrum:
+        fig = plt.figure(figsize=(6, 2.5))
+
+        for i, hdd in enumerate(hier_dynamics_distns):
             for w, dd in enumerate(hdd.regressions):
-                evs = np.linalg.eigvals(dd.A[:,:-1])
+                ax = fig.add_subplot(N_worms, 8, w * 8 + i + 1)
+                evs = np.linalg.eigvals(dd.A[:, :-1])
                 assert np.all(evs.real >= 0.45)
                 assert np.all(evs.real <= 1.2)
                 assert np.all(evs.imag >= -0.3)
@@ -577,32 +626,40 @@ def plot_best_model_results(do_plot_expected_states=True,
                         mec='k',
                         mew=.5,
                         markersize=3,
-                        alpha=0.75,
-                        label="worm {}".format(w+1))
+                        alpha=1.0,
+                        label="{}".format(w + 1))
 
-            ax.plot([-2.1, 1.2], [0, 0], ':k', lw=0.5)
-            ax.plot([0, 0], [-1.2, 1.2], ':k', lw=0.5)
-            ths = np.linspace(0, 2*np.pi, 100)
-            ax.plot(np.cos(ths), np.sin(ths), '-k', lw=0.5)
-            ax.set_xlim(0.4, 1.2)
-            ax.set_ylim(-0.25, 0.25)
-            ax.set_xlabel("re($\\lambda$)", labelpad=0, fontsize=6)
+                ax.plot([-2.1, 1.2], [0, 0], ':k', lw=0.5)
+                ax.plot([0, 0], [-1.2, 1.2], ':k', lw=0.5)
+                ths = np.linspace(0, 2 * np.pi, 100)
+                ax.plot(np.cos(ths), np.sin(ths), '-k', lw=0.5)
+                ax.set_xlim(0.4, 1.2)
+                ax.set_ylim(-0.25, 0.25)
 
-            if i == 0:
-                ax.set_ylabel("im($\\lambda$)", labelpad=0, fontsize=6)
-                ax.set_yticks([-0.2, 0, 0.2])
-            else:
-                ax.set_yticks([])
+                if w == N_worms - 1:
+                    ax.set_xlabel("re($\\lambda$)", labelpad=0, fontsize=6)
+                    ax.set_xticks([0.5, 1.0])
+                else:
+                    ax.set_xticks([])
 
-            ax.tick_params(labelsize=4)
+                if i == 0:
+                    ax.set_ylabel("worm {}\nim($\\lambda$)".format(w+1), labelpad=0, fontsize=6)
+                    ax.set_yticks([-0.2, 0, 0.2])
+                else:
+                    ax.set_yticks([])
 
-            # if i == 0:
-            #     ax.legend(loc="lower right", fontsize=4, labelspacing=0.5)
+                ax.tick_params(labelsize=4)
 
-            ax.set_title("state {}".format(i+1), fontsize=6)
-            # plt.tight_layout(pad=0.05)
+                # if i == 0:
+                #     ax.legend(loc="lower right", fontsize=4,
+                #               ncol=3, labelspacing=0.5, columnspacing=.5,
+                #               handletextpad=.5)
 
-            plt.savefig(os.path.join(fig_dir, "eigenspectrum_{}.pdf".format(i+1)))
+                if w == 0:
+                    ax.set_title("state {}".format(i + 1), fontsize=6)
+
+        plt.tight_layout(pad=0.2)
+        plt.savefig(os.path.join(fig_dir, "eigenspectrum_all.pdf".format(i + 1)))
 
 
 # Using the smoothed states, run each model forward making predictions
@@ -707,7 +764,7 @@ if __name__ == "__main__":
         do_plot_expected_states=False,
         do_plot_x_2d=False,
         do_plot_x_3d=False,
-        do_plot_dynamics_3d=False,
+        do_plot_dynamics_3d=True,
         do_plot_dynamics_2d=False,
         do_plot_state_overlap=False,
         do_plot_state_usage=False,
@@ -716,7 +773,7 @@ if __name__ == "__main__":
         do_plot_recurrent_weights=False,
         do_plot_x_at_changepoints=False,
         do_plot_latent_trajectories_vs_time=False,
-        do_plot_duration_histogram=True,
+        do_plot_duration_histogram=False,
         do_plot_eigenspectrum=False
     )
 

@@ -98,7 +98,7 @@ measured for only a subset of neurons in each worm.
 
 \begin{figure}[t!]
 \centering%
-\includegraphics[width=6in]{figures/v2/figure1} 
+\includegraphics[width=6in]{figures/v3/figure1} 
 \caption{
   \textit{A probabilistic framework for combining
   information across multiple worms in order to learn a shared
@@ -244,162 +244,258 @@ various parameters.
 
 \begin{figure}[t!]
 \centering
-\includegraphics[width=6in]{figures/v2/figure2part1} 
-\caption{ \textit{Hierarchical state space models smooth noisy recordings and
-  make predictions about activity of unseen neurons.}
-  \textbf{a.}~The observed neural activity for the
-  five worms of the \citet{kato2015global} dataset along with the
-  smoothed activity under the hierarchical model.  Only a subset of neurons
-  are labeled in each worm; the rest are treated as missing data.
-  The model uses correlations learned across the population to predict the activity
-  of unobserved neurons.
-  The neurons have been clustered based on similarity, as shown in Fig.~\ref{fig:clustering}.
-  \textbf{b.} The observed activity (green lines) and smoothed activity (black lines)
-  for 3 minutes of activity from worm 5, as denoted by the dotted black box in panel a.
-  Neurons are in the same order as panels a and c.
-  \textbf{c.} Zooming in on 30 seconds of activity denoted by the box in panel b.
-}
+\includegraphics[width=6in]{figures/v3/figure2} 
+\caption{ \textit{Hierarchical state space models smooth noisy
+    recordings and predict the activity of unseen neurons.}  We show
+  the neural activity (differenced Ca++ traces) for two of the
+  five worms from the \citet{kato2015global} dataset.  Of these five
+  worms, worm 1 (left) has the fewest labeled neurons and worm 5
+  (right) has the most.  Green lines are the measured activity of the
+  labeled neurons; black lines are the smoothed activities predicted
+  by the model for the 61 neurons that were labeled in at least one
+  worm.  The model uses correlations learned across all recordings to
+  predict the activity of unlabeled neurons, like \textsf{SMBDL} in
+  worm 1.  The neurons have been clustered based on similarity, as
+  discussed in Fig.~\ref{fig:clustering}.  }
 \label{fig:smoothing}
 \end{figure}
 
 
 The parameters of the learned model offer novel insights into the
 structure of neural activity in the head ganglia that can only be
-obtained by pooling information across many partial recordings.  With
-this aggregated information, we can smooth noisy observations and
-predict the activity of unobserved neurons. \citet{kato2015global}
-used a smoothing procedure to estimate temporal principal components.
-By contrast, we fit our model directly to the first-order differences
-in calcium fluorescence; our only preprocessing step is to correct for
-photo-bleaching. Fig~\ref{fig:smoothing}a show our results for the 
-five worms in this dataset. We see that the model smooths out
-noise in the observed activity and, moreover, makes predictions about
-the activity of neurons that could not be identified in this worm.
+obtained by pooling information across many partial recordings.  We
+fit our model directly to the first-order differences in calcium
+fluorescence; our only preprocessing step is to correct for
+photo-bleaching. The green lines in Fig.~\ref{fig:smoothing} show a
+three minute window of bleaching-corrected, differenced calcium traces
+for two of the five worms in the~\citet{kato2015global} dataset. Of
+these five worms, Worm 1 has the fewest labeled neurons (24 neurons)
+and worm 5 has the most (48 neurons). Across the five worms, 61 unique
+neuron labels were identified in at least one worm.
 
-Fig.~\ref{fig:smoothing}b and shows the segment of neural activity
-denoted by the dotted black box in a. The neurons are clustered based
-on similarity, as discussed in the next section.  Here, the green lines
-show the observed activity and the black lines show the smoothed activity.
-Neurons that were not identified in this worm do not have observed activity,
-but the model still makes predictions about their activity. Fig.~\ref{fig:smoothing}c
-zooms in further to show a 30 sec window of activity. This shows the
-degree of noise in the raw data. 
+By aggregating information across worms, the model learns correlation
+structure that enables it to smooth noisy traces and predict the
+activity of unobserved neurons.  The smoothed and predicted activity
+is shown as black lines in Fig.~\ref{fig:smoothing}. For example,
+even though \textsf{SMDVR} is not labeled in worm 1, the model
+learns how its activity covaries with that of other neurons
+by leveraging information from other worms, like worm 5, in which
+both~\textsf{SMDVR} and~\textsf{SMDVL} are labeled.  Since these
+two neurons are highly correlated, the model can make strong predictions
+about the activity of~\textsf{SMDVR} in worm 1 on the basis of the
+activity of~\textsf{SMDVL}.
 
-Even though each individual recording contains only a subset of neurons,
-the hierarchical model can still estimate the dimensionality of
-neural activity in the entire head ganglia.  We reserve the last 20\% of
-the data (3.6 min) for testing and estimate the dimensionality
-of neural activity based on the marginal log likelihood the model assigns
-to this held-out data. We find that the test likelihood peaks with a
-ten-dimensional latent state (Fig.~\ref{fig:supp_emissions}c).  Moreover, the likelihood is substantially
-higher in the model that includes per-worm observation variances
-compared to the model with shared variances for all worms. Fig.~\ref{fig:supp_emissions}d
-shows the inferred variance for each worm in the \citet{kato2015global}
+The degree to which the smoothed activity matches the observed
+activity is governed by the dimensionality of the latent state space.
+We estimate this dimensionality with cross validation, reserving the
+last 20\% of the data (3.6 min) for testing and measuring the marginal
+log likelihood of the held-out data as we increase the latent
+dimensionality. We find that the test likelihood peaks with a
+10-dimensional latent state (Fig.~\ref{fig:supp_emissions}c).
+
+Moreover, the likelihood is substantially higher in the model that
+includes per-worm observation variances compared to the model with
+shared variances for all worms. Fig.~\ref{fig:supp_emissions}d shows
+the inferred variance for each worm in the \citet{kato2015global}
 dataset.  Neurons that were not identified are marked with a gray box.
-This shows the extent of the missing data and the need for hierarchical
-modeling.\todo{make supplement figure}
-
-\subsection*{Predictions aid in neural identification}
-
-\todo[inline]{Make a figure for this result}
-
+This shows the extent of the missing data and the need for
+hierarchical modeling.\todo{make supplement figure}
+ 
 \subsection*{Emission model reveals clusters of functionally similar neurons}
 
 \begin{figure}[t!]
 \centering
-\includegraphics[width=6in]{figures/v2/figure2part2} 
-\caption{ \textit{The mapping from continuous latent states reveals clusters of
-    functionally similar neurons.}
-  We can view the linear mapping from latent states to observations
-  as either a matrix (\textbf{a.}) or as an embedding of neurons (\textbf{b.}).
-  \textbf{c.}~Viewed as an embedding, we see that neurons cluster into
-  correlated groups with similar tuning to the continuous latent state.
-  \textbf{d.}~The embedding similarity reflects correlations between
-  neurons, but since it is learned as part of a hierarchical model, it
-  predicts similarities for all pairs of neurons, even those that are
-  never simultaneously recorded.  These pairs are denoted by gray boxes
-  in the empirical correlation matrix.
-  \textbf{e.}~Neurons in the same cluster are not necessarily close
-  to one another in space, though we do see that, on average, neurons in cluster 2
-  are more anterior whereas neurons in clusters 5 and 6 are more posterior.}
+\includegraphics[width=6in]{figures/v3/figure3B} 
+\caption{ \textit{The mapping from continuous latent states to neural
+    activity reveals clusters of functionally similar neurons.}
+  \textbf{a.} The emission matrix is a linear map from latent states;
+  the rows can be seen as ``tuning vectors'' that specify how each
+  neuron responds to changes in the latent state.  These tuning
+  vectors cluster into discrete groups (separated by black lines),
+  indicating that there are subpopulations of similarly tuned, and
+  hence highly correlated, neurons. Neurons are ordered as in
+  Fig.~\ref{fig:smoothing}. \textbf{b.}~The pairwise similarity between
+  tuning vectors supports this clustering and shows differences
+  between subpopulations (clusters have been sorted to make this as
+  close to diagonal as possible).  \textbf{c.}~The tuning similarity
+  reflects correlations between neurons, but since it is learned as
+  part of a hierarchical model, it predicts similarities for all pairs
+  of neurons, even pairs that are never simultaneously recorded (gray,
+  off-diagonal boxes).  \textbf{d.}~We show the spatial locations of
+  neurons from each cluster, as specified by WormAtlas.  Neurons in
+  the same cluster are not necessarily close to one another in space,
+  though some clusters are spatially localized. Black bars denote
+  approximate locations of the anterior (AG), dorsal (DG), ventral
+  (VG) and retrovesicular ganglia.}
 \label{fig:clustering}
 \end{figure}
 
-% --------- neural identification ----------------
-% The predicted activity is based on the correlations between neurons
-% learned from many recordings.  These predictions are a useful aid for
-% identifying unlabeled neurons.  For example, we see that
-% \textsf{SMBDL} was not found in the first worm
-% (Fig.~\ref{fig:emissions}a). If the activity of one of the unlabeled
-% neurons closely matches the model's predictions for \textsf{SMBDL},
-% then this provides some evidence in favor of assigning it this
-% label. We tested this idea by withholding the labels of some
-% confidently-identified neurons and comparing their activity to the
-% model's predicted activity for all unlabeled neurons.  We measured the
-% similarity between the actual and predicted activity and found that
-% correct label, or ``candidate,'' tends to be much more similar than
-% other incorrect candidates, as summarized in
-% Fig.~\ref{fig:emissions}b.  Combined with other side-information, like
-% the location of the neuron, this provides a powerful aid for identifying
-% neurons.  The more neurons that we can identify, the better we will be
-% able to learn about the dynamics of neural activity.
-
 
 The linear mapping from latent states to observations reveals clusters
-of similarly tuned neurons.  The mapping maybe viewed as either an $N$
-(neurons) by $D$ (latent dimensions) matrix or as a collection of~$N$
-vectors in $D$-dimensional space, i.e. as an embedding of neurons.
-These two views are shown in Fig.~\ref{fig:emissions}d. We note that
-many vectors point in similar directions, which implies that there are
-groups of correlated neurons.  We clustered the neurons based on the
-cosine similarity between their embedding vectors and found five clusters
-of neurons shown in Fig.~\ref{fig:emissions}f (order of neurons is the same
-as in Fig.~\ref{fig:emissions}a). To make sense of these clusters, we then
-looked at their spatial distribution along the head-to-tail axis of the
-worm's body.  We found that clusters 2-4 correspond to activity closer to
-the head and working backward toward the tail.  The last and largest cluster
-contains many neurons in the nerve ring (location 0.15) \todo{check} as well
-as some posterior neurons. \todo[inline]{discuss functional significance of clusters.}
+of similarly tuned neurons.  The mapping is given by a matrix with
+rows corresponding to neurons and columns corresponding to latent
+dimensions, shown in Fig.~\ref{fig:clustering}a.  Each row can be seen
+as a \emph{tuning vector} that specifies how the corresponding neuron
+responds to each dimension of the latent state.  This matrix reveals
+groups of similarly tuned neurons. To capture this, we used k-means to
+cluster the neurons based on their tuning vectors and found that 12
+clusters adequately captures the diversity of the population.  Using
+fewer clusters leads to qualitatively similar groups but omits some of
+the finer within-group differences; allowing more clusters eventually
+leads to groups of lateral pairs (like \textsf{ASKL} and \textsf{ASKR}
+in a.).  The neurons are ordered as in Fig.~\ref{fig:smoothing}, and
+clusters are separated by black lines.
+
+Fig.~\ref{fig:clustering}b shows the cosine similarity of tuning
+vectors for each pair of neurons, illustrating the differences
+and similarities between clusters.  We notice two prominent
+features.  First, the block structure of this
+matrix lends support to the notion of discrete clusters, indicating
+strong similarity between neurons within the same cluster. Second,
+we have sorted the clusters in order to make this matrix as
+diagonal as possible.  Upon doing so, we see a banded structure
+indicating that in addition to the discrete clustering, there is
+also a continuum along which these clusters vary, with the first
+clusters more similar to each other than to the latter clusters.
+Since the diagonal values equal one by definition, these
+have been grayed out. 
+
+In our model, the emission matrix determines the correlations between
+neurons.  As such, we expect the similarity between rows of the
+emission matrix to mimic the empirical correlations observed in the
+data.  Fig.~\ref{fig:clustering}c shows that this is indeed the case,
+as neurons with similar tuning vectors also have higher empirical
+correlation coefficients.  However, without a hierarchical model, we
+cannot empirically estimate the correlation between pairs of neurons
+that were not simultaneously observed.  For this dataset, this leaves
+many entries in the empirical correlation matrix missing, as denoted
+by the gray off-diagonal entries. A key advantage of our hierarchical
+model is its ability to draw inferences in the face of significant
+amounts of missing data.
+
+What can explain this clustering?  We first look at the spatial
+locations of neurons in each cluster, under the hypothesis that
+clusters could be trivially explained by an inability to resolve
+differences in activity between nearby neurons.
+Fig.~\ref{fig:clustering}d shows the locations of all 61 labeled
+neurons, using the positions from WormAtlas\todo{cite} along the
+head-tail axis of the worm's body.  The size of the dot indicates the
+number of neurons at that location; the bars below denote the
+approximate location of the anterior (AG), dorsal (DG), ventral (VG)
+and retrovesicular (RVG) ganglia.  Some cluster (e.g. cluster 6) are
+spatially localized, but many clusters contain neurons from multiple
+head ganglia.  This suggests that location alone cannot explain the
+similarity between tuning vectors.
+
+\todo[inline]{Break down clustes by type (sensory/inter/motor
+  neuron).}
+
+\todo[inline]{Ask Manuel/Annika to label functional role of neurons.}
+
+
+\subsection*{Model predictions aid in neural identification}
+
+\begin{figure}[t!]
+\centering
+\includegraphics[width=6in]{figures/v3/figure_id} 
+\caption{ \textit{The predicted neural activity is a useful aid for
+    neural identification.}  \textbf{a.} The model uses observed and
+  labeled activity (green traces) to predict the activity of unlabeled
+  neurons, as in Fig.~\ref{fig:smoothing}. \textbf{b.} Alongside the
+  labeled activity, we also have traces from many neurons that could
+  not be unambiguously labeled. To test whether the model's
+  predictions could aid in labeling neurons, we conducted a synthetic
+  experiment, withholding the activity of some labeled neurons. Here,
+  the red trace is the withheld activity of VB01 and the blue traces
+  are the activity of other unlabeled neurons.  Together, these make
+  up a pool of candidates for the VB01 label.  \textbf{c.} For each
+  candidate, we measured the correlation between its activity and the
+  predicted activity of VB01.  \textbf{d.} Repeating this experiment
+  50 times, we found that the correct candidates tend to be much more
+  correlated with the model's predicted activity than the other,
+  incorrect candidates.  Thus, the model's predictions serve as a
+  useful aid for labeling neurons.  }
+\label{fig:id}
+\end{figure}
+
+The predicted activity is based on the correlations between neurons
+learned from many recordings.  These predictions should be a useful
+aid for laneling neurons whose activity could be measured but whose
+identity could not be unambiguously resolved.  To test this
+hypothesis, we conducted a synthetic experiment in which we withheld
+the labels of ten neurons per worm.  We fit the model to the remaining
+neurons and then compared the model's predicted activity to the
+activity of the heldout neurons, as well as to the activity of the
+unlabeled neurons identified by~\citet{kato2015global}.
+
+Fig.~\ref{fig:id}a shows a schematic of the experiment: though VB01
+was labeled in the dataset, we withheld its activity and used the
+model to predict it (black trace) based on the observations of the
+other, labeled neurons (green traces).  We then compared the model
+predictions to the true activity of VB01 (red trace) and to the
+activity of other neurons that were identified but not labeled (blue
+traces), as shown in Fig.~\ref{fig:id}b.  We computed the correlation
+coefficient between these traces and the predicted activity of VB01,
+as shown in Fig.~\ref{fig:id}c.
+We find that in this case, the model's predictions and the true activity
+are highly correlated, even though the true activity was not used
+when training the model.  We repeated this experiment for 50 heldout
+neurons and found that this pattern holds: the predicted activity is
+typically much more correlated with the activity of the correct
+heldout trace (red histogram) than with the activity of other unlabeled
+neurons (blue histogram).  This suggests that our hierarchical model
+may serve an additional role in aiding neural identification in
+ambiguous, noisy data. 
+
+\todo[inline]{Also discuss simultaneous matching experiments? Possible
+  improvements from including more labeled neurons.  Work with Gonzalo
+  on learning permutations.  Importance of capturing uncertainty in matching.}
 
 
 \subsection*{SLDS automatically parse data into discrete, behaviorally meaningful states}
 
 \begin{figure}[t!]
 \centering
-\includegraphics[width=6in]{figures/v2/figure3part1} 
+\includegraphics[width=6in]{figures/v3/figure4} 
 \caption{ \textit{The hierarchical SLDS automatically segments neural
-  activity based on its dynamics.}
-  \textbf{a.}~Three dimensions of the inferred continuous latent states
-  for each of the five worms, color coded by the corresponding discrete latent
-  state.
-  \textbf{b.}~We select the number of discrete states and justify the
-  hierarchcial, robust, and recurrent extensions by measuring the marginal likelihood
-  of held-out test data. We find that the hierarchical, robust, recurrent model
-  with~$K=8$ states performs best.
-  \textbf{c.}~The inferred segmentations align with the manual segmentations
-  of~\citet{kato2015global}.
-  \textbf{d.}~Moreover, the inferred states are in close correspondence with
-  the manually labeled states, which were shown to indicate different behaviors.
-}
+    activity based on its dynamics.}  \textbf{a.}~The top three
+  dimensions of the inferred continuous latent states for each of the
+  five worms, color coded by the corresponding discrete latent state.
+  \textbf{b.}~The inferred segmentations (top) align with the manual
+  segmentations (bottom) of~\citet{kato2015global}, though some
+  manually labeled states are split into multiple inferred states
+  (e.g. forest green state is often split into green and brown) and
+  others are combined (e.g. light purple, light blue, and white are
+  often combined into pink).  \textbf{c.}~We quantified the overlap
+  between the manual and inferred states and found a close
+  correspondence.  As~\citet{kato2015global} showed, the manually
+  labeled states map onto different behaviors (\textsf{REVSUS}:
+  sustained reversal; \textsf{SLOW}: slow forward crawl; \textsf{VT}:
+  ventral turn; \textsf{FWD}: forward crawl; \textsf{DT}: dorsal turn;
+  \textsf{REV1, REV2}: reversals; \textsf{NOSTATE}:
+  undetermined). The correspondence between inferred and manually
+  labeled states implies that hierarchical state space models can
+  infer behaviorally meaningful states directly from neural activity.}
 \label{fig:syllables}
 \end{figure}
 
 Having learned a mapping from latent state space to observed activity,
 we can now reason about the dynamics of these continuous latent
 states. Fig.~\ref{fig:syllables}a plots the trajectory of the first
-worm's neural activity in the first three dimensions of the continuous
+worm's neural activity in the top three dimensions of the continuous
 state space, color coded by the discrete regime inferred under the
-SLDS.  We see that different regimes correspond to distinct loops
-through latent space.  Compare this with Fig. 4b
+SLDS.  These are the three dimensions with the highest percentage of
+expained variance. We see that different regimes correspond to
+distinct loops through latent space.  Compare this with Fig. 4b
 of~\citet{kato2015global}---they achieved a similar result by manually
 segmenting smoothed trajectories in the space spanned by the first
 three principal components.  In contrast, our probabilistic framework
 is automatic, operates on ten-dimensional latent states, and requires
 no additional smoothing.
 
-Moreover, we can use the likelihood of held-out test data to determine
+We use the likelihood of held-out test data to determine
 the number of discrete regimes and assess the value of the robust and
-recurrent model extensions, as shown in Fig.~\ref{fig:syllables}b.
+recurrent model extensions, as shown in Supplemental Fig.~\ref{fig:modelselection}.
 While the non-robust models with Gaussian dynamics noise achieve
 higher training likelihood, the robust models generalize better to
 test data.  Moreover, the recurrent models provide further improvement
@@ -409,75 +505,126 @@ chosen by~\citet{kato2015global}.
 
 Not only does the SLDS find the same number of states, it also finds a
 close correspondence between the manually labeled and inferred states.
-Fig.~\ref{fig:syllables}c shows ten-dimensional latent states and the
+Fig.~\ref{fig:syllables}b shows ten-dimensional latent states and the
 manual and inferred segmentations for a 5.5 minute section of data.
 The manual and inferred states often change at similar times. We also
 see instances where there appears to be a change in continuous state
-dynamics that are identified by the SLDS but missed in the manual
-segmentation (e.g. around $t=700$ seconds).  Fig.~\ref{fig:syllables}d
+dynamics that are identified by the SLDS before it is detected in the
+manual segmentation (e.g. around 11.8 min).  Fig.~\ref{fig:syllables}c
 quantifies the overlap in states for the first worm and for all worms.
 Many inferred states are in one-to-one correspondence with manually
-labeled states, and the remainder tend to be split between two manual
-states.  This confirms that the SLDS is a useful tool for automatically
-segmenting brain data.
+labeled states. Some manual states are split into two inferred states
+(e.g. ventral turns (\textsf{VT}) are split into green and brown) and
+others are combined (e.g. reversals and undetermined states
+(\textsf{REV1}, \textsf{REV2}, \textsf{NOSTATE}) map onto pink).
+The correspondence between manual and inferred states shows that
+the hierarchical SLDS is a useful tool for automatically segmenting
+brain data into behaviorally meaningful states.
 
 
 \subsection*{Quantifying the dynamics of neural activity in each discrete state}
-\begin{figure}[h!]
-\centering
-\includegraphics[width=6in]{figures/v2/figure3part2} 
-\caption{ \textit{Each state is characterized by simple linear dynamics.}
-    \textbf{a.}~Each discrete state is associated with a canonical set of linear
-  dynamics, which can be viewed as mappings from~$\reals^{10}$ to~$\reals^{10}$.
-  We show the mappings for the first three dimensions here, with vectors placed
-  at locations where each state was used.
-  \textbf{b.}~We simulate these linear dynamics from a variety of starting
-  locations and compute the time course of resulting activations for each
-  cluster of neurons.
-  \textbf{c.}~The eigenspectra of the dynamics matrices highlight the rotational
-  vs. contractive nature of the states and illustrate worm-to-worm variability. 
-}
-\label{fig:dynamics}
-\end{figure}
+The hierarchical SLDS not only automates the laborious manual
+segmentation process, it justifies its segmentation with a
+quantitative definition of each inferred state. Each state is
+associated with a set of canonical linear dynamics, as shown in
+Fig.~\ref{fig:dynamics}a. The arrows in these vector fields show where
+the continuous state is mapped to under the corresponding discrete
+state (for the top three latent dimensions).  Arrows are only drawn
+at those locations where the discrete state was actually employed.
 
-Beyond simply automating a manual process, the SLDS also provides a
-quantitative description of the different states.  In particular, each
-state is associated with a set of linear dynamics.
-Fig.~\ref{fig:dynamics}a shows the canonical dynamics associated with
-each of the eight discrete states. The arrows in these vector fields
-show where the continuous state is mapped to under the corresponding
-discrete state (for the first three latent dimensions).  Arrows are
-only drawn at those locations where the discrete state was actually
-employed.  We see that these dynamics capture the rotational patterns
-of the various loops.
+States 1 (blue), 3 (yellow), and 5 (purple) are all characterized
+by convergence toward the origin, which corresponds, essentially, to
+no change in neural activity. These three states differ in terms of how
+quickly they converge to the origin and the amount of rotation as
+they do so.  By contrast, states 2 (red), 4 (green), 6 (orange), 7(brown)
+and 8 (pink) form parts of rotational loops in latent state space.
+As the latent state traces out a loop, it transiently activates
+the clusters of neurons that are tuned to the loop direction.
+These states are associated with dorsal turns, ventral turns, and
+reversals.
 
-We use these dynamics to simulate how brain activity would evolve
+We use these dynamics to simulate how brain activity evolves
 under the different states. Fig.~\ref{fig:dynamics}b shows how four
-simulations of each state from various starting locations  map 
-into activations in the space of neural activity. In particular, we show how they would
-activate the six clusters shown in Fig.~\ref{fig:clustering}.  We see
-that state 4 corresponds to a pronounced dip followed by a rise in the
-activity of cluster 3, alongside a slow ramp in the activity of
-clusters 1 and 2.
-% Referring back to Fig~\ref{fig:emissions}a, we see
-% that cluster 3 consists of \textsf{ALA} and three symmetric pairs of
-% neurons (\textsf{ASK}, \textsf{RIV}, and \textsf{SMDV}).  The~\textsf{ASK}
-% pair are sensory neurons responsible for initiating local search behavior,
-% the \textsf{RIV} pair are polymodal inter- and motor-neurons that specify
-% the ventral bias of turns, and the \textsf{SMDV} are motor neurons
-% that initiate ventral turns. As state 4 is in close correspondence with
-% the ``ventral turn'' state labeled by~\citet{kato2015global}, it makes
-% sense that these neurons would be activated.
+simulated trajectories of each state from various starting locations map 
+into activations in the space of neural activity. For each discrete state,
+we chose the starting locations randomly from the set of locations where
+that state was entered in the real data.  We then simulated forward in
+time according to that state's dynamics until the simulation predicted
+a state change.  We then mapped these four simulations for each state
+through the emission matrix and measured the average activation induced
+on each of the 12 neural clusters.
+
+These activations lend further evidence in support of the behavioral
+labels attributed to each state. For eaxample, state 4 (green) coincides
+with the manually labeled ``ventral turn'' state.  Its dynamics produce
+a pronounced rise in the activity of cluster 6, which (referring back
+to Fig.~\ref{fig:clustering}), consists of the \textsf{RIVL/R} and
+\textsf{SMDVL/R} neurons.  The \textsf{RIV} pair are polymodal inter-
+and motor-neurons that specify the ventral bias of turns, and the
+\textsf{SMDV} are motor neurons that initiate ventral turns.  State 4
+dynamics also tend to suppress the activation of cluster 8, which
+consists mostly of the \textsf{SMB*} neurons.  As these neurons are
+implicated in dorsal turns, this again makes sense. Finally, we see
+that states 6 (orange) and 5 (purple) often produce a rise and fall, respectively,
+of activation on cluster 8, which together produce a dorsal turn.
+These two states do indeed coincide with the manually labeled dorsal
+turn state, again confirming the behavioral interpretation of these
+dynamical states.
+
+Finally, Fig.~\ref{fig:dynamics}c shows the eigenspectra of the linear
+dynamics for each worm and each state.  Imaginary eigenvalues give
+rise to rotational dynamics, and the magnitude of the eigenvalues
+determines whether the state is stable or not.  If the magnitude is
+greater than one (outside the unit disk denoted by the black arc),
+the dynamics produce exponential growth in the latent state space; if
+the eigenvalues are all less than unit magnitude, the dynamics converge
+to a fixed point.  As expected, the rotational states do indeed have
+more imaginary eigenvalues, and most states have eigenvalues with
+magnitude near one.  Some states, like the brown state, have eigenvalues
+larger than one, which produce unstable dynamics, though this is
+somewhat balanced by the recurrent extensions discussed in the next
+section.  Comparing across rows, we see only minor differences from worm
+to worm, substantiating our hierarchical modeling assumptions.
+
+\begin{figure} [b!]
+  \caption{ \textit{(Next page.) Discrete states are characterized by
+      simple linear dynamics that give rise to interpretable patterns
+      of neural activity.}  \textbf{a.}~Each discrete state is
+    associated with a canonical set of linear dynamics, which can be
+    viewed as mappings from~$\reals^{10}$ to~$\reals^{10}$.  We show
+    the mappings for the first three dimensions here, with vectors
+    placed at locations where each state was used.  \textbf{b.}~We
+    simulated four latent state trajectories with these linear
+    dynamics from different starting locations, and then we mapped
+    these latent state trajectories through the emission matrix to
+    compute a time course of resulting activations for each cluster of
+    neurons.  \textbf{c.}~The eigenspectra of the dynamics matrices
+    provide insight into the nature of the states: imaginary eigenvalues
+    give rise to rotational dynamics and the magnitude determines
+    whether the stability of the dynamics. The arc denotes
+    the unit magnitude line; eigenvalues to the left are contractive
+    and to the right are expansive. Looking across rows, we
+    see how the spectra vary from worm to worm. }
+\end{figure}
+\addtocounter{figure}{-1}
+
+\begin{figure}[h!]
+  \centering
+  \vspace{-.5in}
+  \includegraphics[width=6in]{figures/v3/figure5B}
+  \caption{Caption on preceding page.}
+  \label{fig:dynamics}
+\end{figure}
 
 \clearpage
 
-\subsection*{Recurrent models learn spatially localized states and transition boundaries}
+\subsection*{Recurrent models learn spatially localized states and non-Markovian dynamics}
 
 \begin{figure}[t!]
 \centering
-\includegraphics[width=6in]{figures/v2/figure4v2} 
-\caption{ \textit{Discrete state transitions show a non-Markovian,
-    chain-like structure.}  \textbf{a.}~Counts of inferred transitions
+\includegraphics[width=6in]{figures/v3/figure6} 
+\caption{ \textit{Discrete state transitions show a chain-like structure
+    with non-Markovian durations.}  \textbf{a.}~Counts of inferred transitions
   from one state to another. The states are permuted to emphasize the
   feed-forward structure.  \textbf{b.}~An alternative view of the
   transitions; each state is a node in a graph and edges denote
@@ -485,7 +632,7 @@ clusters 1 and 2.
   forward and reverse crawling linked by dorsal and ventral turns.
   \textbf{c.}~The standard SLDS assumes Markovian transitions, which
   imply a geometric distribution of state durations (dotted black
-  lines), but Fig.~\ref{fig:syllables} clearly demonstrates that state
+  lines), but Fig.~\ref{fig:syllables} suggests that state
   transitions occur near the origin.  With the exception of state 7,
   which is unstable, the recurrent SLDS incorporates
   this dependency and generates state durations (solid black lines)
@@ -494,17 +641,16 @@ clusters 1 and 2.
 \label{fig:recurrent}
 \end{figure}
 
-The final and most critical component of the dynamical model for
-neural activity in the head ganglia is the discrete transition
-distribution.  In contrast to standard SLDS, we allow these transition
-probabilities to depend on the location in continuous state space (the
-\emph{recurrent} dependency) as well as the preceding discrete state
-(the \emph{Markovian} dependency).  Fig.~\ref{fig:recurrent}a shows
-the contribution of the Markovian term.  Each cell in this matrix
-denotes the number of transitions from one state to another. We are
-only counting transitions in which the state changes, hence the
-diagonal is zero.  We have permuted the states to emphasize the
-largely feed-forward structure.
+The final component of our hierarchical state space model is the
+discrete transition distribution.  In contrast to standard SLDS, we
+allow these transition probabilities to depend on the location in
+continuous state space (via the \emph{recurrent} dependency) as well as
+the preceding discrete state (the \emph{Markovian} dependency).
+Fig.~\ref{fig:recurrent}a shows the contribution of the Markovian
+term.  Each cell in this matrix denotes the number of transitions from
+one state to another. We are only counting transitions in which the
+state changes, hence the diagonal is zero.  We have permuted the
+states to emphasize the largely feed-forward structure.
 
 Fig.~\ref{fig:recurrent}b shows the strongest entries in this matrix
 in an alternative form.  We have illustrated each state as a node in a
@@ -538,25 +684,37 @@ match the empirical distributions.
 
 \begin{figure}[t!]
 \centering
-\includegraphics[width=6in]{figures/v1/figure5} 
+\includegraphics[width=6in]{figures/v3/figure7} 
 \caption{\textit{Incorporating exogenous factors like oxygen level
     into the dynamics model yield differential responses in worms from
     different genetic strains and developmental stages.}
-  \textbf{a.}~The observed neurons and their inferred observation variances
-  for each of the 41 worms in the~\citet{nichols2017global} dataset.
-  \textbf{b.}~Worms of different genetic strains (N2, npr1) and developmental
-  stages (pre-lethargus, lethargus) exhibit different levels of overall
-  state usage, with blue and yellow much more likely in the lethargus stage.
-  \textbf{c.}~As above, the inferred states closely match the manually
-  labeled states of~\citet{nichols2017global}, with blue and yellow mapping
-  onto the forward (\textsf{Fwd}) and quiescent (\textsf{Q}) states.
-  \textbf{d.}~We extended the SLDS to allow exogenous factors like oxygen
-  level influence discrete transition probabilities.
-  \textbf{e., f.}~Upon fitting the model, we find that oxygen has a limited
-  effect on N2 worms and a much stronger effect on npr1 worms. In npr1 worms,
-  increasing the oxygen level decreases the probability of quiescent and
-  forward states and elicits reversals and turns.
-}
+  \textbf{a.}~The observed neurons variances for each of the 41 worms
+  in the~\citet{nichols2017global} dataset.  \textbf{b.}~Worms of
+  different genetic strains (N2, npr1) and developmental stages
+  (pre-lethargus, lethargus) exhibit different average state usages as
+  a function of the oxygen level.  Blue and red states are much more
+  likely in the lethargus stage for both genetic strains, but they are
+  suppressed in npr1 worms at high oxygen concentrations. Moreover, we
+  see a pronounced increase in the pink state usage immediately after
+  the oxygen level increases to 21\%.  \textbf{c.}~As above, the
+  inferred states closely match the manually labeled states
+  of~\citet{nichols2017global}, with blue, red, and to a lesser extent
+  green mapping onto the forward (\textsf{Fwd}) and quiescent
+  (\textsf{Q}) states.  \textbf{d.}~We extended the model to
+  incorporate oxygen level (O$_2$) and change in oxygen level
+  ($\Delta$O$_2$) as exogenous factors that drive discrete transition
+  probabilities.  We find that oxygen level has a limited effect on N2
+  worms but strongly suppresses the blue (\textsf{FWD/Q}) state in
+  npr1 worms and promotes the purple and orange
+  (\textsf{Rev/DT/VT/Other}) states. The largest effect arises from
+  the change in oxygen: an increase in $O_2$ strongly elicits the pink
+  state.  \textbf{e.} The state-triggered average latent state
+  trajectory following entry into the pink state shows a dip in
+  activity along the last dimension 7 seconds after entry (black
+  arrows).  \textbf{f.} This dip gives rise to strong opposing
+  responses of sensory neurons \textsf{URXL/R} and \textsf{BAGL}
+  (among others), which are known to respond to increases and
+  decreases, respectively, in oxygen concentration.  }
 \label{fig:o2}
 \end{figure}
 
@@ -580,12 +738,12 @@ and npr1 + lethargus). Some neurons are consistently identified in
 almost all worms; others are identified in only a handful.  As before,
 our hierarchical framework combines all this information.
 
-Upon fitting our model, we immediately see a difference in the overall
-usage of the eight states (Fig.~\ref{fig:o2}b). The worms in the
-lethargus stage predominantly use the blue and yellow states.  Again,
+Upon fitting our model, we immediately see a difference in the average
+usage of the eight states  as a function of oxygen level(Fig.~\ref{fig:o2}b). The worms in the
+lethargus stage predominantly use the blue and red states.  Again,
 we found a close correspondence between our inferred states and the
 manually labeled states of~\citet{nichols2017global}
-(Fig.~\ref{fig:o2}c). Here, blue and yellow both map strongly onto the
+(Fig.~\ref{fig:o2}c). Here, blue and red both map strongly onto the
 quiescent (\textsf{Q}) state. This is consistent with the
 characterization of the lethargus stage---at this stage, worms exhibit
 much less crawling behavior. The pre-lethargus worms execute a broader
@@ -595,23 +753,46 @@ and ventral turns  (\textsf{DT} and \textsf{VT}, respectively).
 A key finding of~\citet{nichols2017global} was that increasing the
 oxygen level can elicit activity in lethargus npr1 worms but not in
 lethargus N2 worms. We can quantify this effect with our models by
-including oxygen level as an exogenous input.  Fig.~\ref{fig:o2}d
-shows how the graphical model of the recurrent SLDS changes: now the
-discrete state at time~$t$ (red circle) depends on the preceding discrete
-state, the preceding continuous state, and the current oxygen level.
-\todo[inline]{consider alternative models in which oxygen level
-  influences continuous states and observations?}
+including oxygen level (O$_2$) and change in oxygen level ($\Delta$O$_2$)
+as exogenous inputs.
+% Fig.~\ref{fig:o2}d
+% shows how the graphical model of the recurrent SLDS changes: now the
+% discrete state at time~$t$ (red circle) depends on the preceding discrete
+% state, the preceding continuous state, and the current oxygen level.
+% \todo[inline]{consider alternative models in which oxygen level
+%   influences continuous states and observations?}
+Fig.~\ref{fig:o2}d (top) shows the inferred effect of oxygen level for each
+of the four strain/developmental stage pairs.  As predicted,
+higher oxygen levels increase the probability of reversals and
+turning related states (orange, purple) and decrease the probability
+of forward and quiescent (blue, red, green) states in npr1 worms, but
+has limited effect on N2 worms. We do see an increase in turning related
+states (orange) in the N2 lethargus worms, but inspection of panel b
+indicates this state is still used very sparingly.  Somewhat
+surprisingly, the magnitude of the effect is comparable for both
+pre-lethargus and lethargus npr1 worms, even though the baseline level
+of reversals and turns is much higher in the pre-lethargus worms.
 
-Fig.~\ref{fig:o2}e and~\ref{fig:o2}f show the inferred effect of
-oxygen level for each of the four strain/developmental stage pairs.
-As predicted, only the npr1 worms show a much larger response to
-oxygen. Increasing the oxygen level increases the probability
-of reversals and turning related states (red, orange, purple) and
-decreases the probability of forward and quiescent (blue, yellow)
-states. Somewhat surprisingly, the magnitude of the effect is
-comparable for both pre-lethargus and lethargus npr1 worms, even
-though the baseline level of reversals and turns is much higher in
-the pre-lethargus worms. 
+The largest effect is in response to the change in oxygen level, as
+shown in Fig.~\ref{fig:o2}d (bottom).  Across all worms, the change
+from 10\% to 21\% oxygen concentration sharply increases the probability
+of transitioning into the pink state. Moreover, this state is seldom
+used except for when the oxygen level increases.  This suggests that
+sharp increases in oxygen level induce a transient and characteristic
+neural response that is not seen in steady-state oxygen levels.
+
+Fig.~\ref{fig:o2}e shows the average latent state trajectory triggered
+upon entry into the pink state (for this dataset, the optimal performance
+was achieved by a 6-dimensional state space model).  We see a dip and
+rebound along the last dimension approximately 7 seconds after entry
+(denoted by the black arrows).  We identified the neurons that showed
+the largest response at this point in time and plotted the top ten
+in Fig.~\ref{fig:o2}f.  Unsurprisingly, these neurons are largely sensory
+and interneurons.  In particular, \textsf{URXL/R} and \textsf{BAGL/R} are
+known to jointly encode changes in oxygen level with opposing signs: \textsf{URXL/R}
+respond to increases in oxygen, \textsf{BAGL/R} respond to dcreases.  Our
+model recapitulates these results and suggests that many other sensory
+neurons respond similarly to this stimulus.
 
 \clearpage
 

@@ -48,17 +48,15 @@ from pybasicbayes.distributions import Regression, DiagonalRegression
 from pylds.models import MissingDataLDS
 
 # IO
-run_num = 2
+run_num = 3
 results_dir = os.path.join("results", "2017-11-03-hlds", "run{:03d}".format(run_num))
 signal = "dff_diff"
-# results_dir = os.path.join("results", "2017-11-03-hlds", "run003_dff_bc")
-# signal = "dff_bc"
 
 assert os.path.exists(results_dir)
 fig_dir = os.path.join(results_dir, "figures")
 
 N_worms = 5
-N_clusters = 6
+N_clusters = 12
 
 
 def cached(results_name):
@@ -258,10 +256,10 @@ def plot_likelihoods(D_latents, final_lls, hlls, best_index,
     return ax1, ax2
 
 
-def order_latent_dims(xs, C, ytrains, mtrains):
+def order_latent_dims(xtrains, C, ytrains, mtrains):
 
     # Sort latent dimensions by how much variance they account for
-    D_latent = xs[0].shape[1]
+    D_latent = xtrains[0].shape[1]
     corrcoeffs = np.zeros(D_latent)
     for d in range(D_latent):
         yobss = []
@@ -269,37 +267,43 @@ def order_latent_dims(xs, C, ytrains, mtrains):
         for i in range(N_worms):
             mask = mtrains[i][0]
             yobss.append(ytrains[i][:, mask].ravel())
-            yhats.append(np.outer(xs[i][:,d], C[mask,d]).ravel())
+            yhats.append(np.outer(xtrains[i][:, d], C[mask, d]).ravel())
         yobss = np.concatenate(yobss)
         yhats = np.concatenate(yhats)
-        corrcoeffs[d] = np.corrcoef(yobss.ravel(), yhats.ravel())[0,1]
-    return np.argsort(corrcoeffs)[::-1]
+
+        corrcoeffs[d] = np.corrcoef(yobss.ravel(), yhats.ravel())[0, 1]
+
+    perm = np.argsort(corrcoeffs)[::-1]
+    return perm
 
 
 def cluster_neruons(best_model, seed=0):
     from pyhsmm.util.general import relabel_by_permutation
-    from sklearn.cluster import SpectralClustering, KMeans
-    C_true = best_model.emission_distn.A[:, :-1].copy()
-    C_true /= np.linalg.norm(C_true, axis=1)[:, None]
+    from sklearn.cluster import KMeans
+    # C_true = best_model.emission_distn.A[:, :-1].copy()
+    # C_true /= np.linalg.norm(C_true, axis=1)[:, None]
+    C_norm = C[:,:-1].copy()
+    C_norm /= np.linalg.norm(C_norm, axis=1)[:, None]
 
     np.random.seed(seed)
-    # cluster = SpectralClustering(n_clusters=N_clusters, affinity="precomputed")
-    # cluster.fit((1 + S_true) / 2.0)
-    # labels = cluster.labels_
     cluster = KMeans(n_clusters=N_clusters)
-    cluster.fit(C_true)
+    cluster.fit(C_norm)
     neuron_clusters = cluster.labels_
 
     avg_C = np.zeros((N_clusters, best_model.D_latent))
     for c in range(N_clusters):
         if not np.any(neuron_clusters == c):
             continue
-        avg_C[c] = np.mean(C_true[neuron_clusters == c], axis=0)
+        avg_C[c] = np.mean(C_norm[neuron_clusters == c], axis=0)
 
     # Permute the cluster labels by doing PCA on the average C and sorting
     from sklearn.decomposition import PCA
-    pca = PCA(n_components=1)
-    weights = pca.fit_transform(avg_C)[:, 0]
+    pca = PCA(n_components=1, random_state=0, svd_solver="full")
+    pca.fit(avg_C)
+    weights = pca.transform(avg_C)[:, 0]
+    weights *= np.sign(weights[0])
+
+    # weights = avg_C[:,0]
     labels_perm = np.argsort(weights)
     neuron_clusters = relabel_by_permutation(neuron_clusters, np.argsort(labels_perm))
 
@@ -319,6 +323,7 @@ def plot_best_model_results(best_model,
                             do_plot_cluster_embedding=True,
                             do_plot_cluster_locations=True,
                             do_plot_data=True,
+                            do_plot_data_wide=True,
                             do_plot_data_zoom=True,
                             do_plot_data_as_matrix=True,
                             do_plot_smoothed_data_as_matrix=True):
@@ -486,9 +491,10 @@ def plot_best_model_results(best_model,
 
         fig = plt.figure(figsize=(1., 3.0))
         ax = create_axis_at_location(fig, 0.4, 0.6, 0.5, 2.1)
-        lim = abs(C).max()
+        C_norm = C / np.linalg.norm(C, axis=1, keepdims=True)
+        lim = abs(C_norm).max()
         cmap = gradient_cmap([colors[0], np.ones(3), colors[1]])
-        ax.imshow(C[neuron_perm][:,:-1], aspect="auto", vmin=-lim, vmax=lim, cmap=cmap)
+        ax.imshow(C_norm[neuron_perm][:,:-1], aspect="auto", vmin=-lim, vmax=lim, cmap=cmap)
 
         for o in cluster_offsets[:-1]:
             ax.plot([-.5, 10-.5], [o+.5, o+.5], '-', lw=1, color='k')
@@ -521,11 +527,72 @@ def plot_best_model_results(best_model,
             n_frames = 3 * 60 * 3 + 1
             t = n_start / 180.0 + np.arange(n_frames) / 180.0
 
-            fig = plt.figure(figsize=(2.15, 5))
-            ax = create_axis_at_location(fig, 0.5, 0.4, 1.5, 4.43)
+            fig = plt.figure(figsize=(3, 5))
+            left = .5 if i == 0 else .1
+            ax = create_axis_at_location(fig, left, .4, 2.4, 4.43)
             offset = 0
             ticks = []
             for c in range(N_clusters):
+                for n in neuron_perm:
+                    if neuron_clusters[n] != c:
+                        continue
+
+                    if ms[i][0, n]:
+                        plt.plot(t, -y[n_start:n_start+n_frames, n] / scales[n] + spc * offset, '-', color=colors[3], lw=.5)
+                    else:
+                        # plt.plot(t, np.zeros_like(t) + spc * offset, ':', color='k', lw=.5)
+                        pass
+                    plt.plot(t, -ysm[n_start:n_start+n_frames, n] / scales[n] + spc * offset, '-', color='k', lw=.5)
+
+                    ticks.append(offset * spc)
+                    offset += 1
+
+                # Add an extra space between clusters
+                offset += 2
+
+            # Remove last space
+            offset -= 2
+
+            if i == 0:
+                plt.yticks(ticks, neuron_names[neuron_perm], fontsize=5)
+            else:
+                plt.yticks([])
+
+            plt.ylim(offset * spc, -spc)
+            plt.ylim(offset * spc, -spc)
+            plt.xlim(t[0], t[-1])
+            plt.xticks(fontsize=6)
+            plt.xlabel("time (min)", fontsize=8)
+
+            plt.title("worm {} differenced Ca++".format(i+1), fontsize=8)
+
+            plt.savefig(os.path.join(fig_dir, "y_{}.pdf".format(i)))
+
+        plt.close("all")
+
+    if do_plot_data_wide:
+        all_ys = np.vstack(ys)
+        all_ms = np.vstack(ms)
+        all_ys[~all_ms] = np.nan
+        scales = np.nanstd(all_ys, axis=0)
+
+        for i in range(N_worms):
+            ysm = best_model.smooth(ys[i], mask=ms[i],
+                              inputs=np.ones((ys[i].shape[0], 1)),
+                              group=i)
+
+            y = ys[i].copy()
+            spc = 5
+
+            n_start = 9 * 60 * 3
+            n_frames = 3 * 60 * 3 + 1
+            t = n_start / 180.0 + np.arange(n_frames) / 180.0
+
+            fig = plt.figure(figsize=(6, 5))
+            ax = create_axis_at_location(fig, 0.5, 0.4, 5.4, 4.43)
+            offset = 0
+            ticks = []
+            for c in range(1):
                 for n in neuron_perm:
                     if neuron_clusters[n] != c:
                         continue
@@ -555,7 +622,7 @@ def plot_best_model_results(best_model,
 
             plt.title("Worm {} Differenced Ca++".format(i+1), fontsize=8)
 
-            plt.savefig(os.path.join(fig_dir, "y_{}.pdf".format(i)))
+            plt.savefig(os.path.join(fig_dir, "y_wide_{}.pdf".format(i)))
 
         plt.close("all")
 
@@ -695,51 +762,77 @@ def plot_best_model_results(best_model,
         locs = pandas.read_csv("wormatlas_locations.csv").values
         l_values = np.unique(locs[:,1])
 
-        for lv in l_values:
-            print("{} - {}".format(lv, np.sum(locs[:,1] == lv)))
+        # for lv in l_values:
+        #     print("{} - {}".format(lv, np.sum(locs[:,1] == lv)))
 
-        fig = plt.figure(figsize=(2.5, 1.0))
+        fig = plt.figure(figsize=(2.75, 1.0))
         # ax = fig.add_subplot(111)
-        ax = create_axis_at_location(fig, 0.3, 0.3, 2.1, .6)
+        ax = create_axis_at_location(fig, 0.3, 0.05, 2.1, .9)
         spc = 1
 
         sizes = dict([(lv, 2) for lv in l_values])
+        ax.plot([0.08, 0.25], np.zeros(2), ':k', lw=0.5)
         for name in neuron_names:
             i2 = np.where(locs[:, 0] == name)[0][0]
             l = locs[i2, 1]
-            plt.plot(l, 0, 'ko', markersize=sizes[l], alpha=0.5)
+            plt.plot(l, 0, 'ko', markersize=sizes[l], alpha=1.0)
             sizes[l] += .75
-        ax.text(0.03, 0, "all neurons", fontsize=4, style="italic")
-        print(sizes)
+        ax.text(0.07, 0, "all neurons", fontsize=6, style="italic", horizontalalignment="right")
 
         for cluster in range(N_clusters):
             sizes = dict([(lv, 2) for lv in l_values])
             yoff = spc + spc * (cluster+1)
+            ax.plot([0.08, 0.25], yoff * np.ones(2), ':k', lw=0.5)
             for i1 in np.where(neuron_clusters == cluster)[0]:
                 i2 = np.where(locs[:,0] == neuron_names[i1])[0][0]
                 l = locs[i2, 1]
-                plt.plot(l, yoff, 'o', color=colors[0], markersize=sizes[l], alpha=0.5)
+                plt.plot(l, yoff, 'o', color=colors[0], markersize=sizes[l], alpha=1.0)
                 sizes[l] += .75
-            ax.text(0.03, yoff, "cluster {}".format(cluster+1), fontsize=4, style="italic")
 
+            if cluster % 2 == 0:
+                ax.text(0.07, yoff+.5, "cluster {}".format(cluster+1), fontsize=6, style="italic", horizontalalignment="right")
+
+
+            print("cluster ", cluster)
+            print(sizes)
         # Make a legend
         ax.plot(.273, 2, 'ko', markersize=2)
-        ax.text(.28, 2.3, "1 neuron", fontsize=4)
+        ax.text(.285, 2.5, "1 neuron", fontsize=6)
         ax.plot(.273, 4, 'ko', markersize=3.5)
-        ax.text(.28, 4.3, "3 neurons", fontsize=4)
+        ax.text(.285, 4.5, "3 neurons", fontsize=6)
         ax.plot(.273, 6, 'ko', markersize=5)
-        ax.text(.28, 6.3, "5 neurons", fontsize=4)
-
+        ax.text(.285, 6.5, "5 neurons", fontsize=6)
+        ax.plot(.273, 8, 'ko', markersize=6.5)
+        ax.text(.285, 8.5, "7 neurons", fontsize=6)
+        ax.plot(.273, 10, 'ko', markersize=8)
+        ax.text(.285, 10.5, "9 neurons", fontsize=6)
 
         ax.spines["left"].set_visible(False)
         ax.spines["top"].set_visible(False)
         ax.spines["right"].set_visible(False)
-        ax.set_xlim([0.03, 0.30])
+        ax.spines["bottom"].set_visible(False)
+        ax.set_xlim([0.01, 0.30])
         ax.set_yticks([])
-        ax.set_ylim(spc * (N_clusters + 2), -2 * spc)
-        # ax.set_xticks([0.05, 0.15, 0.25])
+        ax.set_ylim(spc * (N_clusters + 3), -3 * spc)
         plt.xticks([0.08, 0.15, 0.25], fontsize=4)
-        ax.set_xlabel("location", fontsize=6)
+
+        # Draw lines for the head ganglia
+        # Reference http://www.wormatlas.org/ver1/MoW_built0.92/art/intro_figs/figure2.jpg
+        # Anterior ganglion is from OLGDL (0.09) to BAGL (0.1)
+        # Dorsal is from RID (0.11) to ASKL (0.13)
+        # Ventral ganglion is from ASKL (.13) to SABVL (.2)
+        # RVG is from VB02 (0.19) to VD02 (0.26)
+        # ax.plot(0.095, spc * (N_clusters + 2), 'k^', markersize=3)
+        ax.plot([.09, .1], spc * (N_clusters + 2) * np.ones(2), '-k', lw=1)
+        # ax.plot(0.1, spc * (N_clusters + 2), 'k^', markersize=3)
+        ax.plot([.11, .13], spc * (N_clusters + 2) * np.ones(2), '-k', lw=1)
+        # ax.plot(0.15, spc * (N_clusters + 2), 'k^', markersize=3)
+        ax.plot([.14, .17], spc * (N_clusters + 2) * np.ones(2), '-k', lw=1)
+        # ax.plot(.225, spc * (N_clusters + 2), 'k^', markersize=3)
+        ax.plot([.19, .25], (spc * (N_clusters + 2)) * np.ones(2), '-k', lw=1)
+
+
+        # ax.set_xlabel("location along head-tail axis", fontsize=6)
         plt.savefig(os.path.join(fig_dir, "cluster_locs.pdf"))
 
         plt.close("all")
@@ -824,13 +917,12 @@ def heldout_neuron_identification(N_heldout=10, D_latent=10, is_hierarchical=Tru
 
     # Now use model.C to predict neuron identities
     # Fit a linear regression to get the mapping from X to Y for all heldout neurons
-    from sklearn.linear_model import LinearRegression
     xs = [s.gaussian_states for s in model.states_list]
     C = model.C
+    ypreds = [x.dot(C.T) for x in xs]
 
     # Now the coup de grâce -- use all the unlabeled neurons
     all_ys, all_ms, _, _, all_neuron_names = load_data(include_unnamed=True)
-    print(all_ys[0].shape[1])
 
     # Compute similarity between heldout neuron and true identity
     # and between other unlabeled neurons and true identity
@@ -849,18 +941,24 @@ def heldout_neuron_identification(N_heldout=10, D_latent=10, is_hierarchical=Tru
         S_other = np.zeros((possible.sum(), len(others)))
 
         for i, n in enumerate(others):
-            reg = LinearRegression().fit(xs[worm], all_ys[worm][:, n])
-            c_reg = reg.coef_
+            assert np.all(np.isfinite(xs[worm]))
+            assert np.all(np.isfinite(all_ys[worm][:, n]))
+            X = xs[worm]
+            yn = all_ys[worm][:,n]
+            c_reg = np.linalg.solve(X.T.dot(X) + 1e-8 * np.eye(D_latent), X.T.dot(yn))
 
             # Compute cosine similarity between the inferred C and the hrslds emission matrix
             S_other[:,i] = np.dot(C[possible], c_reg) / np.linalg.norm(C[possible], axis=1) / np.linalg.norm(c_reg)
 
         for i, n in enumerate(heldout_neurons[worm]):
-            reg = LinearRegression().fit(xs[worm], ys[worm][:, n])
-            c_reg = reg.coef_
+            assert np.all(np.isfinite(xs[worm]))
+            assert np.all(np.isfinite(ys[worm][:, n]))
+            X = xs[worm]
+            yn = ys[worm][:, n]
+            c_reg = np.linalg.solve(X.T.dot(X) + 1e-8 * np.eye(D_latent), X.T.dot(yn))
 
             # Compute cosine similarity between the inferred C and the hrslds emission matrix
-            S_heldout[:,i] = np.dot(C[possible], c_reg) / np.linalg.norm(C[possible], axis=1) / np.linalg.norm(c_reg)
+            S_heldout[:,i] = np.dot(C[possible], c_reg) / (np.linalg.norm(C[possible], axis=1) * np.linalg.norm(c_reg) + 1e-8)
 
         S_full = np.hstack((S_heldout, S_other))
 
@@ -895,17 +993,18 @@ def heldout_neuron_identification(N_heldout=10, D_latent=10, is_hierarchical=Tru
 
 
     # Plot results
-    plt.figure(figsize=(3,3))
+    plt.figure(figsize=(2, 2))
     lim = 1
     bins = 20
     plt.hist(np.concatenate(s_others), np.linspace(-lim, lim, bins + 1),
-             color=colors[0], alpha=0.5, normed=True, label="Incorrect candidates")
+             color=colors[0], alpha=0.75, normed=True, label="Incorrect candidates")
     plt.hist(np.concatenate(s_heldouts), np.linspace(-lim, lim, bins + 1),
-             color=colors[1], alpha=0.5, normed=True, label="Correct candidates")
-    plt.legend(loc="upper left")
+             color=colors[1], alpha=0.75, normed=True, label="Correct candidates")
+    plt.legend(loc="upper left", fontsize=6)
     plt.title("")
-    plt.xlabel("cosine similarity")
-    plt.ylabel("probability density")
+    plt.xlabel("cosine similarity", fontsize=8)
+    plt.ylabel("probability density", fontsize=8)
+    plt.tick_params(labelsize=6)
     plt.tight_layout()
     plt.savefig(os.path.join(fig_dir, "similarity_comparison.pdf"))
     plt.savefig(os.path.join(fig_dir, "similarity_comparison.png"))
@@ -932,7 +1031,220 @@ def heldout_neuron_identification(N_heldout=10, D_latent=10, is_hierarchical=Tru
         table += row + "\n"
 
     print(table)
-    plt.show()
+    plt.close("all")
+
+
+def heldout_neuron_identification_corr(N_heldout=10, D_latent=10, is_hierarchical=True, seed=0):
+    np.random.seed(seed)
+
+    # Artificially hold out some neurons for identification test
+    n_observed = np.array([hm[0] for hm in ms]).sum(0)
+    heldout_neurons = []
+    heldout_masks = []
+    for i, m in enumerate(ms):
+        observed = np.where(m[0] & (n_observed > 1))[0]
+        hn = np.random.choice(observed, size=N_heldout, replace=False)
+        print("worm {}. holding out: {}. Number observed: {}".format(i, hn, m[0].sum() - N_heldout))
+        hm = m.copy()
+        hm[:, hn] = False
+        n_observed[hn] -= 1
+
+        heldout_neurons.append(hn)
+        heldout_masks.append(hm)
+
+    # Make sure that we haven't thrown out the only instance of a neuron
+    assert (np.all(np.vstack(heldout_masks).sum(0) > 0))
+    print("number of observations per neuron: ")
+    print(n_observed)
+
+    # Fit an lds to this artificially heldout data
+    @cached("heldout_hlds")
+    def _fit():
+        print("Fitting hlds to heldout data")
+        model, lls, _ = _fit_lds(D_latent,
+                                 is_hierarchical=is_hierarchical,
+                                 datas=ys,
+                                 masks=heldout_masks,
+                                 compute_hll=False)
+
+        return model, lls
+
+    model, lls = _fit()
+
+    # Now use model.C to predict neuron identities
+    # Fit a linear regression to get the mapping from X to Y for all heldout neurons
+    xs = [s.gaussian_states for s in model.states_list]
+    C = model.C
+    ypreds = [x.dot(C.T) for x in xs]
+
+    # Now the coup de grâce -- use all the unlabeled neurons
+    all_ys, all_ms, _, _, all_neuron_names = load_data(include_unnamed=True)
+
+    # Compute similarity between heldout neuron and true identity
+    # and between other unlabeled neurons and true identity
+    s_heldouts = []
+    s_others = []
+    rankss = []
+    n_unlabeleds = []
+    accs = []
+    for worm in range(N_worms):
+        possible = ~heldout_masks[worm][0]
+        possible_rows = np.where(possible)[0]
+        others = np.where([name.startswith('worm{}'.format(worm)) for name in all_neuron_names])[0]
+        n_unlabeled = N_heldout + len(others)
+
+        # Predict the activity of unlabeled neurons under the model
+        yp = ypreds[worm][:, possible]
+
+        S_heldout = np.zeros((possible.sum(), N_heldout))
+        S_other = np.zeros((possible.sum(), len(others)))
+
+        for i, n in enumerate(others):
+            assert np.all(np.isfinite(xs[worm]))
+            assert np.all(np.isfinite(all_ys[worm][:, n]))
+            yn = all_ys[worm][:, n]
+
+            # Compute cosine similarity between the inferred C and the hrslds emission matrix
+            S_other[:, i] = np.corrcoef(yp, yn, rowvar=False)[:-1, -1]
+
+        for i, n in enumerate(heldout_neurons[worm]):
+            assert np.all(np.isfinite(xs[worm]))
+            assert np.all(np.isfinite(ys[worm][:, n]))
+            yn = ys[worm][:, n]
+
+            # Compute cosine similarity between the inferred C and the hrslds emission matrix
+            S_heldout[:, i] = np.corrcoef(yp, yn, rowvar=False)[:-1, -1]
+
+        S_full = np.hstack((S_heldout, S_other))
+
+        # Match the neurons with Hungarian algorithm
+        from scipy.optimize import linear_sum_assignment
+        rows, cols = linear_sum_assignment(-S_full)
+        assert np.all(np.diff(rows) == 1), "All rows should have been matched!"
+
+        # Count number of correct assignments and ranks of similarity to true neuron
+        num_correct = 0
+        ranks = []
+        for i, n in enumerate(heldout_neurons[worm]):
+            r = np.where(possible_rows == n)[0][0]
+            perm_n = np.argsort(S_full[r])[::-1]
+            rank = np.where(perm_n == i)[0][0]
+            print("True rank {}: {} / {}".format(i + 1, rank + 1, n_unlabeled))
+
+            # Count how many correct assignments we made
+            if cols[r] == i:
+                num_correct += 1
+
+            ranks.append(rank)
+            s_heldouts.append([S_heldout[r, i]])
+            s_others.append(S_heldout[r, :i])
+            s_others.append(S_heldout[r, i + 1:])
+            s_others.append(S_other[r, :])
+
+        n_unlabeleds.append(n_unlabeled)
+        accs.append(num_correct / N_heldout)
+        print("Fraction correct: {:.2f}".format(accs[-1]))
+        rankss.append(ranks)
+
+    # Plot results
+    plt.figure(figsize=(2, 1.9))
+    lim = 1
+    bins = np.linspace(-lim, lim, 26)
+    p_other, _ = np.histogram(np.concatenate(s_others), bins)
+    p_other = p_other.astype(float) / np.concatenate(s_others).size
+    p_heldouts, _ = np.histogram(np.concatenate(s_heldouts), bins)
+    p_heldouts = p_heldouts.astype(float) /  np.concatenate(s_heldouts).size
+
+    plt.bar(bins[:-1], p_other, width=bins[1]-bins[0],
+            color=colors[0], alpha=0.75, label="incorrect")
+    plt.bar(bins[:-1], p_heldouts, width=bins[1]-bins[0],
+            color=colors[1], alpha=0.75, label="correct")
+
+    plt.legend(loc="upper left", fontsize=6)
+    plt.title("")
+    plt.xlabel("correlation coefficient", fontsize=6)
+    plt.ylabel("probability", fontsize=6)
+    plt.tick_params(labelsize=6)
+    plt.tight_layout()
+    plt.savefig(os.path.join(fig_dir, "similarity_comparison_corr.pdf"))
+    plt.savefig(os.path.join(fig_dir, "similarity_comparison_corr.png"))
+
+    print("Table of results")
+    table = ""
+    header = "$N_{\\mathsf{labeled}$ & "
+    header += "$N_{\\mathsf{unlabeled}$ & "
+    for i in range(N_heldout):
+        header += "{} & ".format(i + 1)
+    header += "Matching Acc. \\\\"
+    table += header + "\n"
+
+    for worm in range(N_worms):
+        row = "{} & ".format(heldout_masks[worm][0].sum())
+        row += "{} & ".format(n_unlabeleds[worm])
+
+        total = heldout_masks[worm][0].sum() + n_unlabeleds[worm]
+        assert total == all_ms[worm][0].sum()
+
+        for i in range(N_heldout):
+            row += "{} & ".format(rankss[worm][i] + 1)
+        row += "{:.2f} \\\\".format(accs[worm])
+        table += row + "\n"
+
+    print(table)
+    plt.close("all")
+
+    # Make a schematic of how the matching works
+    nho = heldout_neurons[0][2]
+    plt.figure(figsize=(1.75, 1.75))
+    tt = np.arange(60*3)
+    N_plot = 5
+    yticklabels = []
+    for i,nobs in enumerate(np.where(heldout_masks[0][0])[0][:N_plot-1]):
+        plt.plot(tt / 3.0, -i + ys[0][tt, nobs], '-', color=colors[3])
+        yticklabels.append(neuron_names[nobs])
+
+    plt.plot(tt / 3.0, -N_plot + 1 + ypreds[0][tt, nho], '-k')
+    yticklabels.append(neuron_names[nho])
+
+    plt.yticks(-np.arange(N_plot), yticklabels)
+    plt.xlabel("time (sec)", fontsize=6)
+    plt.tick_params(labelsize=6)
+    for sp in ["top", "left", "right"]:
+        plt.gca().spines[sp].set_visible(False)
+    plt.tight_layout(0.1)
+    plt.savefig(os.path.join(fig_dir, "cartoon_observed.pdf"))
+
+    # Plot the heldout activity
+    plt.figure(figsize=(1.75, 1.75))
+    tt = np.arange(60 * 3)
+    N_plot = 5
+    yticklabels = []
+
+    plt.plot(tt / 3.0, ys[0][tt, nho], '-', color=colors[1])
+    yticklabels.append("correct")
+    print(np.corrcoef(ypreds[0][:, nho], ys[0][:, nho])[0, 1])
+    i = 0
+    for nobs in heldout_neurons[0]:
+        if nobs == nho:
+            continue
+
+        plt.plot(tt / 3.0, -1 - i + ys[0][tt, nobs], '-', color=colors[0])
+        # yticklabels.append(neuron_names[nobs])
+        yticklabels.append("incorrect {}".format(i+1))
+        print(np.corrcoef(ypreds[0][:, nho], ys[0][:, nobs])[0, 1])
+        i += 1
+        if i == N_plot - 1:
+            break
+
+    plt.yticks(-np.arange(N_plot), yticklabels)
+    plt.gca().yaxis.tick_right()
+    plt.xlabel("time (sec)", fontsize=6)
+    plt.tick_params(labelsize=6)
+    for sp in ["top", "left", "right"]:
+        plt.gca().spines[sp].set_visible(False)
+    plt.tight_layout(0.1)
+    plt.savefig(os.path.join(fig_dir, "cartoon_heldout.pdf"))
+    plt.close("all")
 
 
 if __name__ == "__main__":
@@ -969,7 +1281,8 @@ if __name__ == "__main__":
 
     # Sort the states based on the correlation coefficient between their
     # 1D reconstruction of the data and the actual data
-    dim_perm = order_latent_dims(xtrains, C, ytrains, mtrains)
+    # dim_perm = order_latent_dims(xtrains, C, ytrains, mtrains)
+    dim_perm = np.array([5, 0, 7, 6, 4, 2, 9, 3, 8, 1])
     C = np.hstack((C[:, :-1][:, dim_perm], C[:, -1:]))
     xtrains = [x[:, dim_perm] for x in xtrains]
     xtests = [x[:, dim_perm] for x in xtests]
@@ -988,33 +1301,34 @@ if __name__ == "__main__":
                             do_plot_xcorr=False,
                             do_plot_similarity=False,
                             do_plot_cluster_embedding=False,
-                            do_plot_cluster_locations=True,
+                            do_plot_cluster_locations=False,
                             do_plot_data=False,
+                            do_plot_data_wide=False,
                             do_plot_data_zoom=False,
                             do_plot_data_as_matrix=False,
                             )
 
-    # heldout_neuron_identification()
-    #
-    # Save out the results
-    results = dict(
-        xtrains=xtrains,
-        xtests=xtests,
-        ytrains=ytrains,
-        ytests=ytests,
-        mtrains=mtrains,
-        mtests=mtests,
-        z_true_trains=z_true_trains,
-        z_true_tests=z_true_tests,
-        z_key=z_true_key,
-        best_model=best_model,
-        D_latent=best_model.D_latent,
-        C=C,
-        perm=dim_perm,
-        N_clusters=N_clusters,
-        neuron_clusters=neuron_clusters,
-        neuron_perm=neuron_perm
-    )
+    heldout_neuron_identification_corr()
 
-    with open(os.path.join(results_dir, "lds_data.pkl"), "wb") as f:
-        pickle.dump(results, f)
+    # Save out the results
+    # results = dict(
+    #     xtrains=xtrains,
+    #     xtests=xtests,
+    #     ytrains=ytrains,
+    #     ytests=ytests,
+    #     mtrains=mtrains,
+    #     mtests=mtests,
+    #     z_true_trains=z_true_trains,
+    #     z_true_tests=z_true_tests,
+    #     z_key=z_true_key,
+    #     best_model=best_model,
+    #     D_latent=best_model.D_latent,
+    #     C=C,
+    #     perm=dim_perm,
+    #     N_clusters=N_clusters,
+    #     neuron_clusters=neuron_clusters,
+    #     neuron_perm=neuron_perm
+    # )
+    #
+    # with open(os.path.join(results_dir, "lds_data.pkl"), "wb") as f:
+    #     pickle.dump(results, f)

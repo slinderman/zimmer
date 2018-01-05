@@ -294,7 +294,7 @@ def plot_vector_field_2d(ii, z, x, perm_dynamics_distns, colors,
     ax.set_ylim(lims)
 
 
-def plot_vector_field_3d(ii, z, x, perm_dynamics_distns, colors,
+def plot_vector_field_3d(ii, z, x, dynamics_distns, colors,
                          ax=None, lims=(-3,3), N_plot=500,
                          **kwargs):
 
@@ -314,9 +314,9 @@ def plot_vector_field_3d(ii, z, x, perm_dynamics_distns, colors,
         ini_inds = np.random.choice(ini.size, replace=False, size=N_plot)
         ini = ini[ini_inds]
 
-    Ai_full = perm_dynamics_distns[ii].A \
-        if hasattr(perm_dynamics_distns[ii], 'A') \
-        else perm_dynamics_distns[ii].A_0
+    Ai_full = dynamics_distns[ii].A \
+        if hasattr(dynamics_distns[ii], 'A') \
+        else dynamics_distns[ii].A_0
 
     Ai = Ai_full[:, :D]
     bi = Ai_full[:, D] if Ai_full.shape[1] == D+1 else 0
@@ -597,7 +597,7 @@ from pyhsmm.util.general import rle
 def plot_latent_trajectories_vs_time(xs, zs,
                                      colors=None,
                                      plot_slice=(0, 500),
-                                     alpha=0.5,
+                                     alpha=.75,
                                      title=None,
                                      show_xticks=True,
                                      basename="x_segmentation",
@@ -610,8 +610,8 @@ def plot_latent_trajectories_vs_time(xs, zs,
         x = x / (2 * lim)
         D_latent  = x.shape[1]
 
-        fig = plt.figure(figsize=(2.4, 1.2))
-        ax = create_axis_at_location(fig, 0.3, 0.3, 2.0, .7)
+        fig = plt.figure(figsize=(4.25, 1.35))
+        ax = create_axis_at_location(fig, 0.3, 0.3, 3.85, .85)
 
         # Plot z in background
         offset = 0
@@ -717,19 +717,19 @@ def plot_state_overlap(z_finals, z_trues,
 
     def _plot_overlap(overlap, perm, filename, title):
 
-        fig = plt.figure(figsize=(1.5, 1.25))
-        ax1 = create_axis_at_location(fig, .4, .3, .75, .75)
+        fig = plt.figure(figsize=(1.75, 1.25))
+        ax1 = create_axis_at_location(fig, .6, .3, .75, .75)
         im = ax1.imshow(overlap[:, perm], vmin=0, vmax=1.0, cmap="Greys", interpolation="nearest", aspect="auto")
         ax1.set_xticks([])
         if z_key is None:
             ax1.set_yticks([])
         else:
             ax1.set_yticks(np.arange(K_zimmer))
-            ax1.set_yticklabels(z_key, fontdict=dict(size=6))
-            ax1.tick_params(axis='y', which='major', pad=11)
+            ax1.set_yticklabels(z_key)
+            ax1.tick_params(axis='y', which='major', pad=11, labelsize=6)
         ax1.set_title(title, fontsize=8)
 
-        lax = create_axis_at_location(fig, .3, .3, .06, .75)
+        lax = create_axis_at_location(fig, .5, .3, .06, .75)
         lax.imshow(np.arange(K_zimmer)[:, None], cmap=gradient_cmap(z_colors[:K_zimmer]), interpolation="nearest",
                    aspect="auto")
         lax.set_xticks([])
@@ -738,13 +738,13 @@ def plot_state_overlap(z_finals, z_trues,
         if z_key is None:
             lax.set_ylabel("manual state", fontsize=6)
 
-        bax = create_axis_at_location(fig, .4, .2, .75, .06)
+        bax = create_axis_at_location(fig, .6, .2, .75, .06)
         bax.imshow(np.arange(Kmax)[perm][None, :], cmap=gradient_cmap(colors[:Kmax]), interpolation="nearest", aspect="auto")
         bax.set_xticks([])
         bax.set_yticks([])
         bax.set_xlabel("inferred state", fontsize=6)
 
-        axcb = create_axis_at_location(fig, 1.2, .3, .06, .75)
+        axcb = create_axis_at_location(fig, 1.4, .3, .06, .75)
         plt.colorbar(im, cax=axcb)
         axcb.tick_params(labelsize=6)
 
@@ -1271,8 +1271,8 @@ def plot_simulated_trajectories3(k, x_sims, C, d, T,
 
         if i == 0:
             ax.set_ylabel("neural activity\nper cluster", fontsize=6)
-            ax.set_yticks(np.arange(N_clusters) * 2 * ylim)
-            ax.set_yticklabels(np.arange(N_clusters) + 1, size=5)
+            ax.set_yticks(np.arange(N_clusters, step=2) * 2 * ylim)
+            ax.set_yticklabels(np.arange(N_clusters, step=2) + 1, size=5)
         else:
             ax.set_yticks([])
         ax.set_ylim((2 * N_clusters - 1) * ylim, -ylim)
@@ -1287,7 +1287,7 @@ def plot_simulated_trajectories3(k, x_sims, C, d, T,
         ax.tick_params(labelsize=5)
 
         if k == 0:
-            ax.set_title("sample {}".format(i+1), fontsize=6)
+            ax.set_title("simulated\ntrajectory #{}".format(i+1), fontsize=6)
 
     # plt.tight_layout(pad=.1)
 
@@ -1690,6 +1690,10 @@ def plot_driven_transition_mod(D_input,
     height = .5
     fig = plt.figure(figsize=(fwidth, height * D_input + .25))
 
+    # Manually set it
+    ylims = [(-1, 1), (-5, 20)]
+    yticks = [(-1, 1), (-5, 20)]
+
     for j in range(D_input):
         # Get the differential effect of the input
         condition_names = ["Cond {} ({} - {})".
@@ -1700,22 +1704,26 @@ def plot_driven_transition_mod(D_input,
         for i in range(N_trans):
             w = trans_distns[i].W[-D_input + j][perm]
             effects.append(w * (u_values[j][1] - u_values[j][0]))
-        lim = abs(np.array(effects)).max()
+        # lim = abs(np.array(effects)).max()
+        ymin = np.array(effects).min()
+        ymax = np.array(effects).max()
 
         for i in range(N_trans):
-            ax = create_axis_at_location(fig, left + i * (width + pad), (D_input - j - 1) * height + 0.05, width, height-0.05)
+            ax = create_axis_at_location(fig, left + i * (width + pad), (D_input - j - 1) * height + 0.1, width, height-0.1)
 
             eff = effects[i]
             for k in range(K):
                 ax.bar(k, eff[k], width=0.8, color=colors[k])
             ax.plot([-1, K], [0, 0], '-k', lw=1)
 
-            ax.tick_params(labelsize=6)
+            ax.tick_params(labelsize=6, direction="in", length=2)
             ax.set_xticks([])
             ax.set_xlim(-1, K)
             if i == 0:
               ax.set_ylabel(ylabels[j], fontsize=6, labelpad=-1)
-            ax.set_ylim(-1.1 * lim, 1.1 * lim)
+            # ax.set_ylim(1.1 * ymin, 1.1 * ymax)
+            ax.set_yticks(yticks[j])
+            ax.set_ylim(ylims[j])
 
             ax.spines["top"].set_visible(False)
             ax.spines["bottom"].set_visible(False)
