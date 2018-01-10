@@ -9,7 +9,7 @@ from functools import partial
 
 # Plotting stuff
 import matplotlib
-matplotlib.use("Agg")
+# matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from hips.plotting.colormaps import gradient_cmap
@@ -50,7 +50,7 @@ from pylds.models import MissingDataLDS
 
 # IO
 run_num = 1
-results_dir = os.path.join("results", "nichols", "2018-01-03-hlds", "run{:03d}".format(run_num))
+results_dir = os.path.join("results", "nichols", "2018-01-08-hlds", "run{:03d}".format(run_num))
 signal = "dff_diff"
 
 
@@ -63,7 +63,7 @@ worms_and_conditions = [(i, "n2_1_prelet") for i in range(11)] + \
                        [(i, "npr1_2_let") for i in range(11)]
 worm_names = ["{} worm {}".format(condition, i) for (i, condition) in worms_and_conditions]
 N_worms = len(worms_and_conditions)
-N_clusters = 5
+N_clusters = 12
 
 
 def cached(results_name):
@@ -143,7 +143,7 @@ def _split_test_train(y, train=None, train_frac=0.8):
     return y[train], y[~train], train
 
 
-def _fit_lds(D_latent, alpha_0=1.0, beta_0=1.0,
+def _fit_lds(D_latent, alpha_0=3.0, beta_0=2.0,
              is_hierarchical=True,
              use_covariates=False,
              datas=None,
@@ -176,6 +176,7 @@ def _fit_lds(D_latent, alpha_0=1.0, beta_0=1.0,
             HierarchicalDiagonalRegression(
                 D_obs, D_latent + D_in, N_groups=N_worms,
                 alpha_0=alpha_0, beta_0=beta_0)
+        emission_distn.sigmasq_flat = 0.01 * np.ones((N_worms, D_obs))
 
         model = HierarchicalLDS(dynamics_distn, emission_distn)
     else:
@@ -310,9 +311,10 @@ def order_latent_dims(xs, C, ytrains, mtrains):
             mask = mtrains[i][0]
             yobss.append(ytrains[i][:, mask].ravel())
             yhats.append(np.outer(xs[i][:,d], C[mask,d]).ravel())
-        yobss = np.concatenate(yobss)
-        yhats = np.concatenate(yhats)
-        corrcoeffs[d] = np.corrcoef(yobss.ravel(), yhats.ravel())[0,1]
+            assert yobss[-1].size == yhats[-1].size
+        yobss2 = np.concatenate(yobss)
+        yhats2 = np.concatenate(yhats)
+        corrcoeffs[d] = np.corrcoef(yobss2.ravel(), yhats2.ravel())[0,1]
     return np.argsort(corrcoeffs)[::-1]
 
 
@@ -354,6 +356,7 @@ def plot_best_model_results(best_model,
                             do_plot_x_3d=True,
                             do_plot_x_2d=True,
                             do_plot_sigmasq=True,
+                            do_plot_observed_neurons=True,
                             do_plot_similarity=True,
                             do_plot_data=True,
                             N_plot=5):
@@ -383,12 +386,7 @@ def plot_best_model_results(best_model,
     if do_plot_x_2d:
         pass
 
-    if do_plot_sigmasq:
-
-        # Look at the observation variance across worms
-        sigma_obs = best_model.emission_distn.sigmasq_flat.copy()
-        sigma_obs_mask = np.array([np.any(~m, axis=0) for m in ms])
-        sigma_obs[sigma_obs_mask] = np.nan
+    if do_plot_observed_neurons:
 
         # Plot observed neurons instead
         sigma_obs = np.array([m[0] for m in ms], dtype=np.float)
@@ -411,19 +409,51 @@ def plot_best_model_results(best_model,
         ax.set_yticks(np.arange(D_obs))
         ax.set_yticklabels(neuron_names, rotation="0", fontsize=5)
         ax.set_xticks([])
-        # ax.set_xticks(np.arange(0, N_worms, 5))
-        # ax.set_xticklabels(np.arange(0, N_worms, 5) + 1)
         ax.set_xlabel("worm", fontsize=8, labelpad=20)
 
-        # ax.set_title("standard deviation of\ndifferenced Ca++", fontsize=8)
         ax.set_title("observed neurons", fontsize=8)
-
-        # divider = make_axes_locatable(ax)
-        # cax = divider.append_axes("bottom", size="1%", pad=0.5)
-        # plt.colorbar(mappable=im, cax=cax, orientation="horizontal", label="$\\sigma_{\mathrm{obs} }$")
 
         plt.tight_layout()
         plt.savefig(os.path.join(fig_dir, "observation_neurons.pdf"))
+
+
+    if do_plot_sigmasq:
+
+        # Look at the observation variance across worms
+        sigma_obs = best_model.emission_distn.sigmasq_flat.copy()
+        sigma_obs_mask = np.array([np.any(~m, axis=0) for m in ms])
+        sigma_obs[sigma_obs_mask] = np.nan
+        print(np.nanmax(sigma_obs))
+        print(np.nanmin(sigma_obs))
+        print(np.nanmean(sigma_obs))
+
+        cmap = gradient_cmap([np.ones(3), colors[0]])
+        cmap.set_bad(0.7 * np.ones(3))
+
+        fig = plt.figure(figsize=(1.5, 5.))
+        ax = fig.add_subplot(111)
+        im = ax.imshow(np.sqrt(sigma_obs).T, vmin=0, aspect="auto", cmap=cmap)
+
+        group_sizes = np.array([11, 12, 10, 11])
+        for w in np.cumsum(group_sizes)[:-1]:
+            plt.plot([w, w], [-0.5, D_obs-0.5], ':k')
+        plt.xlim(-0.5, N_worms-0.5)
+        plt.ylim(D_obs-0.5, -0.5)
+
+
+        ax.set_yticks(np.arange(D_obs))
+        ax.set_yticklabels(neuron_names, rotation="0", fontsize=5)
+        ax.set_xticks([])
+        ax.set_xlabel("worm", fontsize=8, labelpad=20)
+
+        ax.set_title("standard deviation of\ndifferenced Ca++", fontsize=8)
+
+        divider = make_axes_locatable(ax)
+        cax = divider.append_axes("bottom", size="1%", pad=0.5)
+        plt.colorbar(mappable=im, cax=cax, orientation="horizontal", label="$\\sigma_{\mathrm{obs} }$")
+
+        plt.tight_layout()
+        plt.savefig(os.path.join(fig_dir, "observation_variance.pdf"))
 
     if do_plot_similarity:
 
@@ -462,30 +492,88 @@ def plot_best_model_results(best_model,
 
         plt.show()
 
+    # if do_plot_data:
+    #     all_ys = np.vstack(ys)
+    #     all_ms = np.vstack(ms)
+    #     all_ys[~all_ms] = np.nan
+    #     scales = np.nanstd(all_ys, axis=0)
+    #
+    #     for i in range(N_plot):
+    #         # Rescale the observations by the inferred standard deviation of the observations
+    #         # scales = np.sqrt(best_model.emission_distn.sigmasq_flat[i])
+    #         # scales[~ms[i][0]] = 1.0
+    #
+    #         ysm = best_model.smooth(ys[i], mask=ms[i], inputs=np.ones((ys[i].shape[0], 1)), group=i)
+    #         y = ys[i].copy()
+    #         spc = 5
+    #
+    #         n_frames = 3 * 120 + 1
+    #         t = np.arange(n_frames) / 3.0
+    #
+    #         plt.figure(figsize=(5.5, 7))
+    #         offset = 0
+    #         ticks = []
+    #         for c in range(N_clusters):
+    #             for n in neuron_perm:
+    #                 if neuron_clusters[n] != c:
+    #                     continue
+    #
+    #                 if ms[i][0, n]:
+    #                     plt.plot(t, y[:n_frames, n] / scales[n] + spc * offset, '-', color='k', lw=1.5)
+    #                     # plt.plot(t, np.cumsum(y[:n_frames, n]) + spc * offset, '-', color='k', lw=1.5)
+    #                 else:
+    #                     plt.plot(t, np.zeros_like(t) + spc * offset, ':', color='k', lw=1)
+    #                 plt.plot(t, ysm[:n_frames, n] / scales[n] + spc * offset, '-', color=colors[0], lw=1)
+    #                 # plt.plot(t, np.cumsum(ysm[:n_frames, n]) + spc * offset, '-', color=colors[0], lw=1)
+    #
+    #                 ticks.append(offset * spc)
+    #                 offset += 1
+    #
+    #             # Add an extra space between clusters
+    #             offset += 2
+    #
+    #         # Remove last space
+    #         offset -= 2
+    #
+    #         plt.yticks(ticks, neuron_names[neuron_perm], fontsize=6)
+    #         plt.ylim(offset * spc, -spc)
+    #         plt.ylim(offset * spc, -spc)
+    #         plt.xlim(0, t[-1])
+    #         plt.xticks(fontsize=6)
+    #         plt.xlabel("time (s)")
+    #
+    #         plt.title("{} Activity".format(worm_names[i]))
+    #         plt.tight_layout()
+    #
+    #         # plt.savefig(os.path.join(results_dir, "y_{}.png".format(i)), dpi=300)
+    #         plt.savefig(os.path.join(fig_dir, "y_{}.pdf".format(i)))
+    #
+    #         plt.close("all")
+    #     # plt.show()
+
     if do_plot_data:
         all_ys = np.vstack(ys)
         all_ms = np.vstack(ms)
         all_ys[~all_ms] = np.nan
         scales = np.nanstd(all_ys, axis=0)
 
-        for i in range(N_plot):
+        for i in range(N_worms):
             ysm = best_model.smooth(ys[i], mask=ms[i],
                               inputs=np.ones((ys[i].shape[0], 1)),
                               group=i)
 
             y = ys[i].copy()
-            # y[~ms[i]] = np.nan
-            # ysm[~ms[i]
-            # spc = .75 * abs(y).max()
             spc = 5
 
-            n_frames = 3 * 120 + 1
-            # n_frames = 3 * 60 + 1
-            # n_plot = min(20, D_obs)
-            n_plot = D_obs
-            t = np.arange(n_frames) / 3.0
+            n_start = int(4.5 * 60 * 3)
+            n_frames = 3 * 60 * 3 + 1
+            t = n_start / 180.0 + np.arange(n_frames) / 180.0
 
-            plt.figure(figsize=(5.5, 7))
+            fig = plt.figure(figsize=(3., 4))
+            # left = .5 if i == 0 else .1
+            left = .5
+            from hips.plotting.layout import create_axis_at_location
+            ax = create_axis_at_location(fig, left, .4, 2.4, 3.4)
             offset = 0
             ticks = []
             for c in range(N_clusters):
@@ -494,10 +582,11 @@ def plot_best_model_results(best_model,
                         continue
 
                     if ms[i][0, n]:
-                        plt.plot(t, y[:n_frames, n] / scales[n] + spc * offset, '-', color='k', lw=1.5)
+                        plt.plot(t, -y[n_start:n_start+n_frames, n] / scales[n] + spc * offset, '-', color=colors[3], lw=.5)
                     else:
-                        plt.plot(t, np.zeros_like(t) + spc * offset, ':', color='k', lw=1)
-                    plt.plot(t, ysm[:n_frames, n] / scales[n] + spc * offset, '-', color=colors[0], lw=1)
+                        # plt.plot(t, np.zeros_like(t) + spc * offset, ':', color='k', lw=.5)
+                        pass
+                    plt.plot(t, -ysm[n_start:n_start+n_frames, n] / scales[n] + spc * offset, '-', color='k', lw=.5)
 
                     ticks.append(offset * spc)
                     offset += 1
@@ -508,33 +597,31 @@ def plot_best_model_results(best_model,
             # Remove last space
             offset -= 2
 
-            # for d,n in enumerate(neuron_perm):
-            #     if ms[i][0, n]:
-            #         plt.plot(t, y[:n_frames, n] / scales[n] + spc * d, '-', color='k', lw=1)
-            #     else:
-            #         plt.plot(t, np.zeros_like(t) + spc * d, ':', color='k', lw=1)
-            #     plt.plot(t, ysm[:n_frames, n] / scales[n] + spc * d, '-', color=colors[0], lw=1.5)
+            # if i == 0:
+            #     plt.yticks(ticks, neuron_names[neuron_perm], fontsize=5)
+            # else:
+            #     plt.yticks([])
+            plt.yticks(ticks, neuron_names[neuron_perm], fontsize=4)
 
-            plt.yticks(ticks, neuron_names[neuron_perm], fontsize=6)
+            # Plot a line denoting O2 onset
+            plt.plot([6.0, 6.0], [offset * spc, -spc], ':k')
+
             plt.ylim(offset * spc, -spc)
-            plt.ylim(offset * spc, -spc)
-            plt.xlim(0, t[-1])
+            plt.xlim(t[0], t[-1])
             plt.xticks(fontsize=6)
-            plt.xlabel("time (s)")
+            plt.xlabel("time (min)", fontsize=8)
 
-            plt.title("{} Activity".format(worm_names[i]))
-            plt.tight_layout()
+            plt.title("{} neural activity".format(worm_names[i]), fontsize=8)
 
-            # plt.savefig(os.path.join(results_dir, "y_{}.png".format(i)), dpi=300)
-            plt.savefig(os.path.join(fig_dir, "y_{}.pdf".format(i)))
+            plt.savefig(os.path.join(fig_dir, "y_{}.pdf".format(worm_names[i])))
 
             plt.close("all")
-        # plt.show()
 
 def fit_all_models(D_latents=np.arange(2, 21, 2)):
     axs = None
     best_models = []
-    for index, (is_hierarchical, use_covariates) in enumerate([(True, False), (True, True)]):
+    # for index, (is_hierarchical, use_covariates) in enumerate([(True, False), (True, True)]):
+    for index, (is_hierarchical, use_covariates) in enumerate([(True, False)]):
         models = []
         llss = []
         hlls = []
@@ -745,7 +832,8 @@ if __name__ == "__main__":
     n_trains = np.array([mtr.sum() for mtr in mtrains])
     n_tests = np.array([mte.sum() for mte in mtests])
 
-    D_latents = np.arange(2, 11, 2)
+    # D_latents = np.arange(2, 31, 2)
+    D_latents = [6]
     best_models = fit_all_models(D_latents)
     best_model = best_models[0]
 
@@ -765,47 +853,48 @@ if __name__ == "__main__":
 
     # Sort the states based on the correlation coefficient between their
     # 1D reconstruction of the data and the actual data
-    # dim_perm = order_latent_dims(xtrains, C, ytrains, mtrains)
-    # C = np.hstack((C[:, :-1][:, dim_perm], C[:, -1:]))
-    # xtrains = [x[:, dim_perm] for x in xtrains]
-    # xtests = [x[:, dim_perm] for x in xtests]
-    #
-    # # Cluster the neurons based on C
-    # neuron_perm, neuron_clusters = cluster_neruons(best_model)
+    dim_perm = order_latent_dims(xtrains, C, ytrains, mtrains)
+    C = np.hstack((C[:, :-1][:, dim_perm], C[:, -1:]))
+    xtrains = [x[:, dim_perm] for x in xtrains]
+    xtests = [x[:, dim_perm] for x in xtests]
+
+    # Cluster the neurons based on C
+    neuron_perm, neuron_clusters = cluster_neruons(best_model)
 
     # plot_likelihoods(final_lls, hlls, best_index)
     plot_best_model_results(best_model,
                             do_plot_x_3d=False,
                             do_plot_x_2d=False,
-                            do_plot_sigmasq=True,
+                            do_plot_sigmasq=False,
+                            do_plot_observed_neurons=False,
                             do_plot_similarity=False,
-                            do_plot_data=False,
+                            do_plot_data=True,
                             N_plot=N_worms)
 
     # heldout_neuron_identification()
 
     # Save out the results
-    # results = dict(
-    #     xtrains=xtrains,
-    #     xtests=xtests,
-    #     ytrains=ytrains,
-    #     ytests=ytests,
-    #     mtrains=mtrains,
-    #     mtests=mtests,
-    #     utrains=utrains,
-    #     utests=utests,
-    #     z_true_trains=z_true_trains,
-    #     z_true_tests=z_true_tests,
-    #     z_key=z_true_key,
-    #     best_model=best_model,
-    #     D_latent=best_model.D_latent,
-    #     C=C,
-    #     perm=dim_perm,
-    #     N_clusters=N_clusters,
-    #     neuron_clusters=neuron_clusters,
-    #     neuron_perm=neuron_perm,
-    #     neuron_names=neuron_names,
-    # )
-    #
-    # with open(os.path.join(results_dir, "lds_data.pkl"), "wb") as f:
-    #     pickle.dump(results, f)
+    results = dict(
+        xtrains=xtrains,
+        xtests=xtests,
+        ytrains=ytrains,
+        ytests=ytests,
+        mtrains=mtrains,
+        mtests=mtests,
+        utrains=utrains,
+        utests=utests,
+        z_true_trains=z_true_trains,
+        z_true_tests=z_true_tests,
+        z_key=z_true_key,
+        best_model=best_model,
+        D_latent=best_model.D_latent,
+        C=C,
+        perm=dim_perm,
+        N_clusters=N_clusters,
+        neuron_clusters=neuron_clusters,
+        neuron_perm=neuron_perm,
+        neuron_names=neuron_names,
+    )
+
+    with open(os.path.join(results_dir, "lds_data.pkl"), "wb") as f:
+        pickle.dump(results, f)

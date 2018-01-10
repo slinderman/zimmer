@@ -1382,6 +1382,8 @@ def plot_duration_histogram(trans_distn, zs, sim_durs,
                             colors=None,
                             results_dir=None):
 
+    import ipdb; ipdb.set_trace()
+
     from pyhsmm.util.general import rle
     from scipy.stats import geom
     colors = default_colors if colors is None else colors
@@ -1391,8 +1393,6 @@ def plot_duration_histogram(trans_distn, zs, sim_durs,
     durs = np.concatenate(durs)
     K = np.max(states) + 1
     perm = np.arange(K) if perm is None else perm
-
-    import ipdb; ipdb.set_trace()
 
     logpi = trans_distn.logpi[np.ix_(perm, perm)]
     P = np.exp(logpi)
@@ -1407,25 +1407,26 @@ def plot_duration_histogram(trans_distn, zs, sim_durs,
         bins = np.linspace(0, dmax+1, 15)
         width = (bins[1] - bins[0]) / 2.0
 
-        print(len(dk))
-
         plt.figure(figsize=(1.8, 1.8))
 
         # Plot the histogram of inferred transitions
         tmp, _ = np.histogram(dk, bins, density=True)
-        # plt.bar(bins[:-1] / 3.0, tmp * 3.0, width=width / 3.0,
-        #         color=colors[k], edgecolor='k', label="Empirical")
         plt.bar(bins[:-1] / 3.0, tmp * 3.0, width=width * 2.0 / 3.0,
                 color=colors[k], alpha=0.75, edgecolor='k', label="Emp")
 
 
-        # Plot the histogram of simulatedtransitions
+        # Plot the histogram of simulated transitions
+        if dmax < 30:
+            bins = np.arange(1, dmax+1, step=3)
+        else:
+            bins = np.linspace(1, dmax, 10).round()
+
         tmp, _ = np.histogram(sim_durs[k], bins, density=True)
-        # plt.bar((bins[:-1] + width) / 3.0, tmp * 3.0, width=width / 3.0,
-        #          color=colors[k], alpha=0.5, edgecolor='k', label="Simulated")
         plt.plot(bins[:-1] / 3.0, tmp * 3.0, '-k', label="Rec")
 
-        plt.plot(np.arange(1, dmax) / 3.0, g.pmf(np.arange(1, dmax)) * 3.0, ':k', label="Mkv")
+        # Plot the geometric distribution under Markov
+        plt.plot(bins[:-1] / 3.0, g.pmf(bins[:-1]) * 3.0, ':k', label="Mkv")
+
         plt.xlabel("duration (s)")
         plt.ylabel("probability")
         plt.legend(loc="upper right", fontsize=6)
@@ -1691,8 +1692,8 @@ def plot_driven_transition_mod(D_input,
     fig = plt.figure(figsize=(fwidth, height * D_input + .25))
 
     # Manually set it
-    ylims = [(-1, 1), (-5, 20)]
-    yticks = [(-1, 1), (-5, 20)]
+    ylims = [(-1., 1), (-10, 20)]
+    yticks = [(-1, 1), (-10, 20)]
 
     for j in range(D_input):
         # Get the differential effect of the input

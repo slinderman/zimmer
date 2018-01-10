@@ -332,6 +332,39 @@ def plot_noise_density(lims=(-3, 3), n_pts=50):
     plt.savefig("fig1_noise.pdf")
     plt.show()
 
+def plot_trans_matrix():
+    T = np.eye(3, 3) + np.random.gamma(shape=2, scale=.5, size=(3,3))
+    T /= T.sum(axis=1, keepdims=True)
+    print(T)
+
+    fig = plt.figure(figsize=(2.5, 1.5))
+    ax = fig.add_subplot(111)
+
+    im = ax.imshow(T, vmin=0, vmax=1, aspect="equal", cmap="Greys")
+    ax.set_xticks([])
+    ax.set_yticks([])
+
+    from mpl_toolkits.axes_grid1 import make_axes_locatable
+    from hips.plotting.colormaps import gradient_cmap
+    cmap = gradient_cmap(colors[:3])
+    divider = make_axes_locatable(ax)
+    lax = divider.append_axes("left", size="5%", pad=0.05)
+    lax.imshow(np.arange(K)[:, None], cmap=cmap, vmin=0, vmax=2, aspect="auto", interpolation="nearest")
+    lax.set_xticks([])
+    lax.set_yticks([])
+
+    bax = divider.append_axes("bottom", size="5%", pad=0.05)
+    bax.imshow(np.arange(K)[None, :], cmap=cmap, vmin=0, vmax=2, aspect="auto", interpolation="nearest")
+    bax.set_xticks([])
+    bax.set_yticks([])
+
+    cax = divider.append_axes("right", size="5%", pad=0.05)
+    plt.colorbar(im, cax=cax)
+
+    plt.tight_layout(pad=0.1)
+    plt.savefig("fig1_transmatrix.pdf")
+    plt.show()
+
 if __name__ == "__main__":
     # Simulate data
     As, bs = make_dynamics_library_2D()
@@ -373,4 +406,5 @@ if __name__ == "__main__":
     # plot_continuous_latent_states()
     # plot_neural_activity()
     # plot_observation_variance()
-    plot_noise_density()
+    # plot_noise_density()
+    plot_trans_matrix()

@@ -65,11 +65,11 @@ from hips.plotting.layout import create_axis_at_location
 from hips.plotting.colormaps import white_to_color_cmap
 
 # LDS Results
-lds_dir = os.path.join("results", "nichols", "2018-01-03-hlds", "run001")
+lds_dir = os.path.join("results", "nichols", "2018-01-08-hlds", "run001")
 assert os.path.exists(lds_dir)
 
 # AR-HMM RESULTS
-results_dir = os.path.join("results", "nichols", "2018-01-03-arhmm", "run001")
+results_dir = os.path.join("results", "nichols", "2018-01-09-arhmm", "run001")
 assert os.path.exists(results_dir)
 fig_dir = os.path.join(results_dir, "figures")
 
@@ -314,6 +314,19 @@ def plot_likelihoods(Ks, final_lls, hlls, best_index,
     return ax1, ax2
 
 
+def compute_baseline_likelihood(xs):
+    from scipy.stats import norm
+
+    ll = 0
+    for x in xs:
+        mus = np.mean(xs, axis=0)
+        sigmas = np.std(xs, axis=0)
+
+        for d in range(D_latent):
+            ll += norm(mus[d], sigmas[d]).logpdf(xs[:,d]).sum()
+    return ll
+
+
 def fit_all_models(Ks=np.arange(4, 21, 2)):
     axs = None
     is_hierarchical = True
@@ -321,6 +334,12 @@ def fit_all_models(Ks=np.arange(4, 21, 2)):
     is_recurrent = True
     # for index, (is_hierarchical, is_robust, is_recurrent, is_driven) in \
     #         enumerate(it.product(*([(True, False)] * 4))):
+
+    # Compute the baseline probability
+    baseline = compute_baseline_likelihood(xtrains)
+    baseline /= T_trains[:N_worms].sum()
+    print("baseline ll: ", baseline)
+    assert False
 
     all_models = []
     all_lls = []
@@ -509,14 +528,40 @@ def plot_best_model_results(do_plot_expected_states=True,
     if do_plot_x_3d:
         for i in range(N_worms):
             plot_3d_continuous_states(xtrains[i], z_finals[i], colors,
-                                      figsize=(2.7, 2.7),
-                                      # title="LDS Worm {} States (ARHMM Labels)".format(i + 1),
+                                      figsize=(1.2, 1.2),
                                       title="{}".format(worm_names[i]),
                                       results_dir=fig_dir,
                                       filename="x_3d_{}.pdf".format(worm_names[i]),
-                                      lim=6,
-                                      lw=1)
-        plt.close("all")
+                                      lim=4.5,
+                                      lw=.5,
+                                      inds=(0, 1, 2))
+
+            plot_3d_continuous_states(xtrains[i], z_true_trains[i], zimmer_colors,
+                                      figsize=(1.2, 1.2),
+                                      title="{}".format(worm_names[i]),
+                                      results_dir=fig_dir,
+                                      filename="x_123_zimmer_{}.pdf".format(worm_names[i]),
+                                      lim=4.5,
+                                      lw=.5,
+                                      inds=(0, 1, 2))
+            plot_3d_continuous_states(xtrains[i], z_finals[i], colors,
+                                      figsize=(1.2, 1.2),
+                                      title="{}".format(worm_names[i]),
+                                      results_dir=fig_dir,
+                                      filename="x_345_{}.pdf".format(worm_names[i]),
+                                      lim=4.5,
+                                      lw=.5,
+                                      inds=(3, 4, 5))
+            plot_3d_continuous_states(xtrains[i], z_true_trains[i], zimmer_colors,
+                                      figsize=(1.2, 1.2),
+                                      title="{}".format(worm_names[i]),
+                                      results_dir=fig_dir,
+                                      filename="x_345_zimmer_{}.pdf".format(worm_names[i]),
+                                      lim=4.5,
+                                      lw=.5,
+                                      inds=(3, 4, 5))
+
+            plt.close("all")
 
     if do_plot_dynamics_3d:
         plot_3d_dynamics(
@@ -859,12 +904,15 @@ def plot_best_model_results(do_plot_expected_states=True,
         plt.xlim(-Tpre / 3.0, Tpost / 3.0)
         plt.xticks([-Tpre / 3, 0, Tpost/3])
         plt.tick_params(labelsize=6)
-        plt.title("state-triggered\naverage", fontsize=8)
+        plt.title("average state\non entry to syllable {}".format(k+1), fontsize=8)
         plt.savefig(os.path.join(fig_dir, "sta_{}.pdf".format(k+1)))
 
         # Now project the STA into neural space
-        # most_tuned_inds = np.argsort(abs(C_norm.dot(sta[Tpre+7*3])))[::-1]
-        most_tuned_inds = np.argsort(np.linalg.norm(C_norm.dot(sta.T), axis=1))[::-1]
+        # most_tuned_inds = np.argsort(C.dot(sta[Tpre+7*3]))[::-1]
+        most_tuned_inds = np.argsort(C_norm.dot(sta[Tpre+7*3]))[::-1]
+        # most_tuned_inds = np.argsort(abs(C.dot(sta[Tpre+7*3])))[::-1]
+        # most_tuned_inds = np.argsort(np.linalg.norm(C_norm.dot(sta.T), axis=1))[::-1]
+        # neural_sta = sta.dot(C.T).T
         neural_sta = sta.dot(C_norm.T).T
         neural_sta -= neural_sta.mean(axis=1, keepdims=True)
         lim = abs(sta[most_tuned_inds][:10]).max()
@@ -877,7 +925,7 @@ def plot_best_model_results(do_plot_expected_states=True,
         for i in range(n_plot):
             plt.plot(tt, -i + neural_sta[most_tuned_inds[i]], color=colors[3], lw=1)
 
-        yl = (-n_plot-.5, 1.5)
+        yl = (-n_plot-1, 2)
         # yl = plt.ylim()
         plt.plot([0, 0], yl, ':k')
         plt.ylim(yl)
@@ -887,7 +935,7 @@ def plot_best_model_results(do_plot_expected_states=True,
         plt.xlim(-Tpre / 3.0, Tpost / 3.0)
         plt.xticks([-Tpre / 3, 0, Tpost/3])
         plt.tick_params(labelsize=5)
-        plt.title("largest\nneural responses", fontsize=8)
+        plt.title("largest\nexcitatory responses", fontsize=8)
         plt.savefig(os.path.join(fig_dir, "sta_neural_{}.pdf".format(k + 1)))
 
         # Plot the response of the most-tuned neurons
@@ -897,7 +945,7 @@ def plot_best_model_results(do_plot_expected_states=True,
         for i in range(n_plot):
             plt.plot(tt, -i + neural_sta[most_tuned_inds[-(i+1)]], color=colors[3], lw=1)
 
-        yl = (-n_plot-.5, 1.5)
+        yl = (-n_plot-1, 2)
         # yl = plt.ylim()
         plt.plot([0, 0], yl, ':k')
         plt.ylim(yl)
@@ -907,7 +955,7 @@ def plot_best_model_results(do_plot_expected_states=True,
         plt.xlim(-Tpre / 3.0, Tpost / 3.0)
         plt.xticks([-Tpre / 3, 0, Tpost / 3])
         plt.tick_params(labelsize=5)
-        plt.title("smallest\nneural responses", fontsize=8)
+        plt.title("largest\ninhibitory responses", fontsize=8)
         plt.savefig(os.path.join(fig_dir, "sta_neural_least_{}.pdf".format(k + 1)))
         plt.show()
 
@@ -953,8 +1001,6 @@ if __name__ == "__main__":
     utrains = standardize_all(utrains)
     utests = standardize_all(utests)
     us = standardize_all(us)
-    # print(np.concatenate(us).max(axis=0))
-    # print(np.concatenate(us).min(axis=0))
 
     # Get the "true" states
     z_true_trains = lds_results['z_true_trains']
@@ -969,6 +1015,7 @@ if __name__ == "__main__":
 
     C = lds_results['best_model'].C[:,lds_results['perm']]
     d = lds_results['best_model'].D[:,0]
+
     N_clusters = lds_results['N_clusters']
     neuron_clusters = lds_results['neuron_clusters']
     C_norm = C / np.linalg.norm(C, axis=1)[:, None]
@@ -1045,9 +1092,9 @@ if __name__ == "__main__":
         do_plot_x_at_changepoints=False,
         do_plot_latent_trajectories_vs_time=False,
         do_plot_duration_histogram=False,
-        do_plot_driven_trans_matrices=True,
+        do_plot_driven_trans_matrices=False,
         do_plot_state_probs=False,
-        do_plot_state_triggered_average=False
+        do_plot_state_triggered_average=True
     )
 
     # Rolling predictions

@@ -1151,9 +1151,9 @@ def heldout_neuron_identification_corr(N_heldout=10, D_latent=10, is_hierarchica
     lim = 1
     bins = np.linspace(-lim, lim, 26)
     p_other, _ = np.histogram(np.concatenate(s_others), bins)
-    p_other = p_other.astype(float) / np.concatenate(s_others).size
+    p_other = p_other.astype(np.float) / np.concatenate(s_others).size
     p_heldouts, _ = np.histogram(np.concatenate(s_heldouts), bins)
-    p_heldouts = p_heldouts.astype(float) /  np.concatenate(s_heldouts).size
+    p_heldouts = p_heldouts.astype(np.float) / np.concatenate(s_heldouts).size
 
     plt.bar(bins[:-1], p_other, width=bins[1]-bins[0],
             color=colors[0], alpha=0.75, label="incorrect")
@@ -1237,7 +1237,7 @@ def heldout_neuron_identification_corr(N_heldout=10, D_latent=10, is_hierarchica
             break
 
     plt.yticks(-np.arange(N_plot), yticklabels)
-    plt.gca().yaxis.tick_right()
+    # plt.gca().yaxis.tick_right()
     plt.xlabel("time (sec)", fontsize=6)
     plt.tick_params(labelsize=6)
     for sp in ["top", "left", "right"]:
@@ -1262,6 +1262,7 @@ if __name__ == "__main__":
     n_tests = np.array([mte.sum() for mte in mtests])
 
     D_latents = np.arange(2, 21, 2)
+    # D_latents = np.arange(2, 21, 2)
     best_models = fit_all_models(D_latents)
     best_model = best_models[0]
 

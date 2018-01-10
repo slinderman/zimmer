@@ -41,7 +41,7 @@ zimmer_colors = [cm(i) for i in np.linspace(0.05, 0.95, 8)]
 # Modeling stuff
 from pyhsmm.util.general import relabel_by_usage, relabel_by_permutation
 
-from autoregressive.models import ARWeakLimitStickyHDPHMM
+from autoregressive.models import ARWeakLimitStickyHDPHMM, ARHMM
 from pyslds.util import get_empirical_ar_params
 from pybasicbayes.distributions import AutoRegression, RobustAutoRegression
 from rslds.models import SoftmaxRecurrentARHMM
@@ -94,6 +94,28 @@ def cached(results_name):
             return results
         return func_wrapper
     return _cache
+
+
+def compute_baseline_likelihood(xtrains, xtests, alpha=3.):
+    model = ARHMM(init_state_distn="uniform",
+                  obs_distns=[AutoRegression(**ar_params)],
+                  alpha=alpha)
+
+    for xtr in xtrains:
+        model.add_data(xtr)
+
+    # Fit the model with Gibbs
+    lls = []
+    for itr in tqdm(range(N_samples)):
+        model.resample_model()
+        lls.append(model.log_likelihood())
+
+    # Compute heldout likelihood
+    hll = 0
+    for xte in xtests:
+        hll += model.log_likelihood(xte)
+
+    return hll
 
 
 def _fit_model_wrapper(K, alpha=3, gamma=100., kappa=100.,
@@ -177,42 +199,48 @@ def _fit_model_wrapper(K, alpha=3, gamma=100., kappa=100.,
     return model, np.array(lls), hll, None
 
 
-def plot_likelihoods(group, Ks, final_lls, hlls, best_index,
-                     color, name, axs=None):
+def plot_likelihoods(group, Ks, hlls, best_index,
+                     name,
+                     baseline=None,
+                     axs=None):
 
     # Plot results of searching over models
     if axs is None:
-        plt.figure(figsize=(2.4,1.8))
+        plt.figure(figsize=(6, 3))
         # ax1 = plt.subplot(211)
         # ax2 = plt.subplot(212)
         ax = plt.subplot(111)
     else:
         ax = axs
+    cmap = gradient_cmap([np.ones(3), colors[4]])
 
     M = len(Ks)
     T_te = T_tests[:N_worms].sum()
 
-    cmap = gradient_cmap([np.ones(3), colors[4]])
+    tolabel = [1, 2, 6, 10, 14, 20]
+
     for m in range(M):
         label = "K={}".format(Ks[m]) \
-            if group == 0 and \
-               (Ks[m] == 4 or Ks[m] == 12 or Ks[m] == 20) \
+            if group == 0 and Ks[m] in tolabel \
             else None
+
+        color = cmap((m+1) / M) if m > 0 else 0.5 * np.ones(3)
+
         xx = group + m / (M+2)
         ax.bar(xx, hlls[m] / T_te,
                width=1. / (M + 2),
-               color=cmap((m+1) / M),
+               color=color,
                edgecolor='k',
                label=label)
 
-    if group == 0:
-        ax.plot(best_index / (M+2), 12.65, 'k*', markersize=4)
+    if group == 7:
+        ax.plot(group + best_index / (M+2), 12.75, 'k*', markersize=4)
 
     # ax.set_xlabel("Model", fontsize=6)
     ax.set_title("model selection", fontsize=8)
     ax.set_ylabel("test log likelihood\n(nats per time bin)", fontsize=6)
     ax.tick_params(labelsize=6)
-    ax.set_ylim(11.25, 12.75)
+    ax.set_ylim(9, 13)
 
     # update xticks
     xticks = ax.get_xticks()
@@ -229,9 +257,16 @@ def plot_likelihoods(group, Ks, final_lls, hlls, best_index,
 
 
 def fit_all_models(Ks=np.arange(4, 21, 2)):
+
+    # Compute the baseline probability
+    fit_baseline = cached("baseline")(compute_baseline_likelihood)
+    baseline_hll = fit_baseline(xtrains[:N_worms], xtests[:N_worms])
+    baseline_hll /= T_tests[:N_worms].sum()
+    print("baseline test ll: ", baseline_hll)
+
     axs = None
     for index, (is_hierarchical, is_robust, is_recurrent) in \
-            enumerate(it.product(*([(True, False)] * 3))):
+            enumerate(it.product(*([(False, True)] * 3))):
 
         models = []
         llss = []
@@ -239,9 +274,9 @@ def fit_all_models(Ks=np.arange(4, 21, 2)):
         z_smplss = []
 
         group_name = "{}\n{}\n{}".format(
-            "hier." if is_hierarchical else "std.",
-            "rob." if is_robust else "std.",
-            "rec." if is_recurrent else "std."
+            "hierarchical" if is_hierarchical else "standard",
+            "robust" if is_robust else "standard",
+            "recurrent" if is_recurrent else "standard"
         )
         for K in Ks:
             name = "{}_{}_{}_{}".format(
@@ -270,12 +305,12 @@ def fit_all_models(Ks=np.arange(4, 21, 2)):
         best_index = np.argmax(hlls)
         print("Best number of states: {}".format(Ks[best_index]))
 
-        axs = plot_likelihoods(index, Ks, final_lls, hlls, best_index,
-                               name=group_name, color=colors[index], axs=axs)
+        axs = plot_likelihoods(index, Ks, hlls, best_index,
+                               name=group_name, axs=axs)
 
     plt.tight_layout()
-    plt.legend(loc="upper right", fontsize=4, handlelength=1, labelspacing=.5)
-    # plt.savefig(os.path.join(fig_dir, "dimensionality.pdf".format(name)))
+    plt.legend(loc="upper left", fontsize=6, ncol=3)
+    plt.savefig(os.path.join(fig_dir, "dimensionality.pdf".format(name)))
 
 
 def fit_best_model(K=8,
@@ -301,7 +336,7 @@ def fit_best_model(K=8,
     return best_model, lls, hll
 
 
-def simulate_trajectories(N_trajs=100, T_sim=30, N_sims=4, worm=4, min_sim_dur=6):
+def simulate_trajectories(N_trajs=100, T_sim=30, N_sims=4, group=4, min_sim_dur=6):
     from pyhsmm.util.general import rle
     z_finals_rles = [rle(z) for z in z_finals]
 
@@ -337,7 +372,7 @@ def simulate_trajectories(N_trajs=100, T_sim=30, N_sims=4, worm=4, min_sim_dur=6
 
             # Simulate a trajectory from this starting point
             # keep the segment that is using state k
-            x_sim, z_sim = best_model.generate(T=T_sim, init_z=perm[k], init_x=start, group=worm, with_noise=False)
+            x_sim, z_sim = best_model.generate(T=T_sim, init_z=perm[k], init_x=start, group=group, with_noise=False)
             is_k = z_sim == perm[k]
             if np.any(~is_k):
                 dur_k = np.min(np.arange(T_sim)[~is_k])
@@ -402,24 +437,36 @@ def plot_best_model_results(do_plot_expected_states=True,
     # Plot inferred states in 3d
     if do_plot_x_3d:
         for i in range(N_worms):
-            plot_3d_continuous_states(xtrains[i], z_finals[i], colors,
+            # plot_3d_continuous_states(xtrains[i], z_finals[i], colors,
+            #                           figsize=(1.2, 1.2),
+            #                           # title="LDS Worm {} States (ARHMM Labels)".format(i + 1),
+            #                           title="worm {}".format(i + 1),
+            #                           results_dir=fig_dir,
+            #                           filename="x_3d_{}.pdf".format(i + 1),
+            #                           lim=3,
+            #                           lw=.5,
+            #                           inds=(0,1,2))
+            #
+            # plot_3d_continuous_states(xtrains[i], z_finals[i], colors,
+            #                           figsize=(1.2, 1.2),
+            #                           # title="LDS Worm {} States (ARHMM Labels)".format(i + 1),
+            #                           title="worm {}".format(i + 1),
+            #                           results_dir=fig_dir,
+            #                           filename="x_3d_345_{}.pdf".format(i + 1),
+            #                           lim=3,
+            #                           lw=.5,
+            #                           inds=(3,4,5))
+
+            plot_3d_continuous_states(xtrains[i], z_true_trains[i], zimmer_colors,
                                       figsize=(1.2, 1.2),
                                       # title="LDS Worm {} States (ARHMM Labels)".format(i + 1),
                                       title="worm {}".format(i + 1),
                                       results_dir=fig_dir,
-                                      filename="x_3d_{}.pdf".format(i + 1),
+                                      filename="x_3d_zimmer_{}.pdf".format(i + 1),
                                       lim=3,
                                       lw=.5,
-                                      inds=(0,1,2))
-            plot_3d_continuous_states(xtrains[i], z_finals[i], colors,
-                                      figsize=(1.2, 1.2),
-                                      # title="LDS Worm {} States (ARHMM Labels)".format(i + 1),
-                                      title="worm {}".format(i + 1),
-                                      results_dir=fig_dir,
-                                      filename="x_3d_345_{}.pdf".format(i + 1),
-                                      lim=3,
-                                      lw=.5,
-                                      inds=(3,4,5))
+                                      inds=(0, 1, 2))
+
             plt.close("all")
 
     if do_plot_dynamics_3d:
@@ -538,17 +585,17 @@ def plot_best_model_results(do_plot_expected_states=True,
     if do_plot_duration_histogram:
         durss = [np.array([x_sim.shape[0] for x_sim in x_sims]) for x_sims in x_simss]
 
-        # plot_duration_histogram(best_model.trans_distn,
-        #                         z_finals,
-        #                         durss,
-        #                         perm=perm,
-        #                         results_dir=fig_dir)
-
-        plot_duration_cdfs(best_model.trans_distn,
+        plot_duration_histogram(best_model.trans_distn,
                                 z_finals,
                                 durss,
                                 perm=perm,
                                 results_dir=fig_dir)
+
+        # plot_duration_cdfs(best_model.trans_distn,
+        #                         z_finals,
+        #                         durss,
+        #                         perm=perm,
+        #                         results_dir=fig_dir)
 
         plt.close("all")
 
@@ -683,6 +730,104 @@ def rolling_predictions(T_pred, worm, N_sim=50):
     return z_preds, x_preds
 
 
+def predict_from_z():
+    """
+    Compute the implied distribution p(x | z) and then combine this with
+    p(y | x) to get p(y | z).
+    """
+    # We can compute the mean and covariance of x in feedforward fashion
+    # starting with the mean and covariance of x[0] and the given
+    # discrete state sequence z.
+    # for worm in range(N_worms):
+    for worm in range(1):
+        z, x, T = z_finals[worm], xs[worm], Ts[worm]
+        dds = [dd.regressions[worm] for dd in hier_dynamics_distns]
+        As = [dd.A[:,:-1] for dd in dds]
+        bs = [dd.A[:,-1] for dd in dds]
+        Qs = [dd.sigma for dd in dds]
+
+        mus = np.zeros((T, D_latent))
+        sigmas = np.zeros((T, D_latent, D_latent))
+
+        # Start with a small variance around x[0]
+        mus[0] = x[0]
+        sigmas[0] = 1e-4 * np.eye(D_latent)
+
+        for t in range(T-1):
+            At, bt, Qt = As[z[t]], bs[z[t]], Qs[z[t]]
+            mus[t+1] = At.dot(mus[t]) + bt
+            sigmas[t+1] = At.dot(sigmas[t]).dot(At.T) + Qt
+
+        # Project this into the space of neural activity
+        mus_y = mus.dot(C.T) + d
+        sigmas_y = np.array([(C.dot(sigmat) * C).sum(axis=1) for sigmat in sigmas])
+
+        plt.figure()
+        plt.plot(mus[:,0])
+        plt.plot(x[:,0])
+        plt.show()
+
+def predict_from_z_given_partial_obs(xlim=(0, 18)):
+    """
+    Compute the implied distribution p(x | z) and then combine this with
+    p(y | x) to get p(y | z).
+    """
+    from pylds.lds_messages_interface import rts_smoother
+    for worm in range(N_worms):
+        z, x, T = z_finals[worm], xs[worm], Ts[worm]
+        tt = np.arange(T) / 60. / 3.0
+
+        # Extend z with a dummy state at the end to get the right time scale
+        z = np.concatenate((z, [0]))
+
+        mu_init = x[0].copy('C')
+        sigma_init = 1e-4 * np.eye(D_latent)
+
+        dds = [dd.regressions[worm] for dd in hier_dynamics_distns]
+        As = np.array([dd.A[:,:-1] for dd in dds])[z]
+        bs = np.array([dd.A[:,-1:] for dd in dds])[z]
+        Qs = np.array([dd.sigma for dd in dds])[z]
+
+        # Make a dummy observation to constrain the scale of the latent states
+        C = np.ones((1, D_latent))
+        d = np.zeros((1, 1))
+        R = 9 * np.eye(1)
+        y = np.zeros((T, 1))
+        u = np.ones((T, 1))
+
+        # Use RTS smoother to get posterior over x
+        _, mus, sigmasqs = rts_smoother(mu_init, sigma_init, As, bs, Qs, C, d, R, u, y)
+        sigmasqs = sigmasqs[:, np.arange(D_latent), np.arange(D_latent)]
+        sigmas = np.sqrt(sigmasqs)
+
+        # Plot the latent states and their expectations under z and soft constraint
+        from hips.plotting.layout import create_axis_at_location
+        fig = plt.figure(figsize=(6, 5))
+        ax1 = create_axis_at_location(fig, 0.5, 1.0, 5.25, 3.75)
+        spc = 5
+        for d in range(D_latent):
+            plt.fill_between(tt, spc * d + mus[:, d] - 2 * sigmas[:,d], spc * d + mus[:, d] + 2 * sigmas[:,d], color=colors[0], alpha=0.25)
+            plt.plot(tt, spc * d + mus[:, d], label='$\\mathbb{E}[x \\mid z]$' if d == 0 else None, lw=3, color=colors[0])
+            plt.plot(tt, spc * d + x[:, d], label='$x$' if d == 0 else None, ls='-', lw=2, color='k')
+        plt.yticks(spc * np.arange(D_latent), ["$x_{{{}}}$".format(d+1) for d in range(D_latent)])
+        plt.ylim(-spc, spc*(D_latent + 1))
+        plt.xlim(xlim)
+        plt.xticks([])
+        plt.legend(loc="upper right", ncol=2)
+
+        # Plot the discrete latent states
+        K = best_model.num_states
+        ax2 = create_axis_at_location(fig, 0.5, .5, 5.25, .375)
+        plt.imshow(z[None,:], cmap=gradient_cmap(colors[:K]), interpolation="none", vmin=0, vmax=K-1, aspect="auto", extent=(0, tt[-1], 0, 1))
+        plt.yticks([])
+        plt.ylabel("$z$", labelpad=10, rotation=0)
+        plt.xlabel("time (min)")
+        plt.xlim(xlim)
+        plt.savefig(os.path.join(fig_dir, "E_x_given_z_{}.png".format(worm)))
+        plt.savefig(os.path.join(fig_dir, "E_x_given_z_{}.pdf".format(worm)))
+    plt.close("all")
+
+
 if __name__ == "__main__":
     # Load the continuous states found with the LDS
     with open(os.path.join(lds_dir, "lds_data.pkl"), "rb") as f:
@@ -727,7 +872,7 @@ if __name__ == "__main__":
                           etasq=0.01,
                           affine=True)
 
-    Ks = np.arange(4, 21, 2)
+    Ks = np.concatenate(([1], np.arange(2, 21, 2)))
     fit_all_models(Ks)
 
     # Fit the best model
@@ -757,14 +902,14 @@ if __name__ == "__main__":
 
     # x_trajss, x_simss = simulate_trajectories()
     sim = cached("simulations")(simulate_trajectories)
-    x_trajss, x_simss = sim(min_sim_dur=0, N_sims=1000, T_sim=100 * 3)
+    x_trajss, x_simss = sim(min_sim_dur=0, N_sims=1000, T_sim=100 * 3, group=0)
 
     # Plot results
     plot_best_model_results(
         do_plot_expected_states=False,
         do_plot_x_2d=False,
         do_plot_x_3d=False,
-        do_plot_dynamics_3d=True,
+        do_plot_dynamics_3d=False,
         do_plot_dynamics_2d=False,
         do_plot_state_overlap=False,
         do_plot_state_usage=False,

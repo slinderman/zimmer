@@ -132,7 +132,7 @@ def _load_nichols(index, name, condition, sample_rate):
         npr1_2_let="npr1_2_Let"
     )
     dir1 = os.path.join(nichols_dir, condition_to_dir[condition.lower()])
-    dir2 = glob.glob(os.path.join(dir1, "AN*"))[index]
+    dir2 = sorted(glob.glob(os.path.join(dir1, "AN*")))[index]
     zimmer_data = loadmat(os.path.join(dir2, "wbdataset.mat"))
 
     # Get the neuron names
