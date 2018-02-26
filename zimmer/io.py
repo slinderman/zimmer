@@ -295,6 +295,7 @@ def load_kato_data(include_unnamed=True, N_worms=5, signal="dff_diff"):
     neuron_names = np.unique(np.concatenate([wd.neuron_names for wd in worm_datas]))
     if not include_unnamed:
         print("Only including named neurons.")
+        import ipdb; ipdb.set_trace()
         neuron_names = neuron_names[:61]
     else:
         print("Including all neurons, regardless of whether they were identified.")
