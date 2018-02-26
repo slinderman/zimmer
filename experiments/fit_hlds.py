@@ -53,10 +53,14 @@ from pylds.models import MissingDataLDS
 # run_num = 3
 # results_dir = os.path.join("results", "2017-11-03-hlds", "run{:03d}".format(run_num))
 # signal = "dff_diff"
-run_num = 1
-results_dir = os.path.join("results", "2018-01-17-hlds", "run{:03d}".format(run_num))
-signal = "dff_deriv"
 
+# run_num = 1
+# results_dir = os.path.join("results", "2018-01-17-hlds", "run{:03d}".format(run_num))
+# signal = "dff_deriv"
+
+run_num = 1
+results_dir = os.path.join("results", "kato", "2018-02-26-hlds", "run{:03d}".format(run_num))
+signal = "dff_diff"
 
 assert os.path.exists(results_dir)
 fig_dir = os.path.join(results_dir, "figures")
@@ -220,7 +224,45 @@ def _fit_lds(D_latent, D_in=1, alpha_0=1.0, beta_0=1.0,
     return model, np.array(lls), hll
 
 
-def plot_likelihoods(D_latents, final_lls, hlls, best_index,
+def fit_all_models(D_latents=np.arange(2, 21, 2)):
+
+    results = {}
+
+    for index, is_hierarchical in enumerate([True, False]):
+
+        models = []
+        llss = []
+        hlls = []
+
+        for D_latent in D_latents:
+            name = "{}_{}".format(
+                "hlds" if is_hierarchical else "lds",
+                D_latent
+            )
+            print("Fitting model: {}".format(name))
+
+            fit = cached(name)(
+                partial(_fit_lds,
+                        is_hierarchical=is_hierarchical))
+            model, lls, hll = fit(D_latent)
+
+            # Append results
+            models.append(model)
+            llss.append(lls)
+            hlls.append(hll)
+
+        final_lls = np.array([lls[-1] for lls in llss])
+        hlls = np.array(hlls)
+        best_index = np.argmax(hlls)
+        print("Best dimension: {}".format(D_latents[best_index]))
+
+        results["hier" if is_hierarchical else "no_hier"] = \
+            models[best_index], best_index, models, llss, final_lls, hlls
+
+    return results
+
+
+def _plot_likelihoods(D_latents, final_lls, hlls, best_index,
                      color, name, axs=None):
 
     # Plot results of searching over models
@@ -260,6 +302,17 @@ def plot_likelihoods(D_latents, final_lls, hlls, best_index,
     ax2.set_ylabel("Test Log Likelihood")
 
     return ax1, ax2
+
+
+def plot_likelihoods(results):
+    axs = None
+    for index, key in enumerate(["hier", "no_hier"]):
+        best_model, best_index, models, llss, final_lls, hlls = results[key]
+        axs = _plot_likelihoods(D_latents, final_lls, hlls, best_index,
+                                name=key, color=colors[index], axs=axs)
+    plt.tight_layout()
+    plt.legend(loc="lower right")
+    plt.savefig(os.path.join(fig_dir, "dimensionality.pdf"))
 
 
 def order_latent_dims(xtrains, C, ytrains, mtrains):
@@ -942,46 +995,6 @@ def plot_best_model_results(best_model,
         plt.savefig(os.path.join(fig_dir, "cluster_types.pdf"))
         plt.show()
 
-def fit_all_models(D_latents=np.arange(2, 21, 2)):
-    axs = None
-    best_models = []
-    for index, is_hierarchical in enumerate([True, False]):
-
-        models = []
-        llss = []
-        hlls = []
-
-        for D_latent in D_latents:
-            name = "{}_{}".format(
-                "hlds" if is_hierarchical else "lds",
-                D_latent
-            )
-            print("Fitting model: {}".format(name))
-
-            fit = cached(name)(
-                partial(_fit_lds,
-                        is_hierarchical=is_hierarchical))
-            model, lls, hll = fit(D_latent)
-
-            # Append results
-            models.append(model)
-            llss.append(lls)
-            hlls.append(hll)
-
-        final_lls = np.array([lls[-1] for lls in llss])
-        hlls = np.array(hlls)
-        best_index = np.argmax(hlls)
-        best_models.append(models[best_index])
-        print("Best dimension: {}".format(D_latents[best_index]))
-
-        axs = plot_likelihoods(D_latents, final_lls, hlls, best_index,
-                               name=name, color=colors[index], axs=axs)
-
-    plt.tight_layout()
-    plt.legend(loc="lower right")
-    plt.savefig(os.path.join(fig_dir, "dimensionality.pdf".format(name)))
-
-    return best_models
 
 
 def heldout_neuron_identification(N_heldout=10, D_latent=10, is_hierarchical=True, seed=0):
@@ -1366,10 +1379,9 @@ if __name__ == "__main__":
     n_trains = np.array([mtr.sum() for mtr in mtrains])
     n_tests = np.array([mte.sum() for mte in mtests])
 
-    D_latents = np.arange(3, 4)
-    # D_latents = np.arange(2, 21, 2)
-    best_models = fit_all_models(D_latents)
-    best_model = best_models[0]
+    D_latents = np.arange(2, 21, 2)
+    fit_results = fit_all_models(D_latents)
+    best_model = fit_results["hier"][0]
 
     # Do an E step to smooth the latent states
     C = best_model.emission_distn.A
@@ -1388,8 +1400,6 @@ if __name__ == "__main__":
     # Sort the states based on the correlation coefficient between their
     # 1D reconstruction of the data and the actual data
     dim_perm = order_latent_dims(xtrains, C, ytrains, mtrains)
-    # dim_perm = np.array([5, 0, 7, 6, 4, 2, 9, 3, 8, 1])
-    # dim_perm = np.array([0, 1, 2])
     C = np.hstack((C[:, :-1][:, dim_perm], C[:, -1:]))
     xtrains = [x[:, dim_perm] for x in xtrains]
     xtests = [x[:, dim_perm] for x in xtests]
@@ -1398,26 +1408,6 @@ if __name__ == "__main__":
     neuron_perm, neuron_clusters = cluster_neruons(best_model)
     cluster_sizes = np.bincount(neuron_clusters, minlength=N_clusters)
     cluster_offsets = np.cumsum(cluster_sizes) - 1
-
-    # plot_likelihoods(final_lls, hlls, best_index)
-    #
-    plot_best_model_results(best_model,
-                            do_plot_pca=False,
-                            do_plot_x_3d=True,
-                            do_plot_x_2d=False,
-                            do_plot_sigmasq=False,
-                            do_plot_xcorr=False,
-                            do_plot_similarity=False,
-                            do_plot_cluster_embedding=False,
-                            do_plot_cluster_locations=False,
-                            do_plot_data=False,
-                            do_plot_data_wide=False,
-                            do_plot_data_zoom=False,
-                            do_plot_data_as_matrix=False,
-                            do_plot_cluster_types=False
-                            )
-
-    # heldout_neuron_identification_corr()
 
     # Save out the results
     results = dict(
@@ -1441,3 +1431,23 @@ if __name__ == "__main__":
 
     with open(os.path.join(results_dir, "lds_data.pkl"), "wb") as f:
         pickle.dump(results, f)
+
+    # Plotting
+    # plot_likelihoods(fit_results)
+    # plot_best_model_results(best_model,
+    #                         do_plot_pca=False,
+    #                         do_plot_x_3d=True,
+    #                         do_plot_x_2d=False,
+    #                         do_plot_sigmasq=False,
+    #                         do_plot_xcorr=False,
+    #                         do_plot_similarity=False,
+    #                         do_plot_cluster_embedding=False,
+    #                         do_plot_cluster_locations=False,
+    #                         do_plot_data=False,
+    #                         do_plot_data_wide=False,
+    #                         do_plot_data_zoom=False,
+    #                         do_plot_data_as_matrix=False,
+    #                         do_plot_cluster_types=False
+    #                         )
+
+    # heldout_neuron_identification_corr()
