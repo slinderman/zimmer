@@ -1,11 +1,3 @@
-# Plot the vector field showing inferred (discrete-state-dependent)
-# dynamics at each point in continuous latent space.
-# Sum over time bins and smoothed continuous latent states.
-# so that each point in continuous latent space is
-#    E_{z} E_x_t [A x_{t} + b]
-#
-# We would ideally sample over A as well, but to start, just take
-# a single sample of A.
 import os
 import numpy as np
 from scipy.stats import multivariate_normal
@@ -14,7 +6,9 @@ import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from mpl_toolkits.mplot3d import Axes3D
+from mpl_toolkits.mplot3d import proj3d
 import matplotlib.animation as manimation
+from matplotlib.patches import FancyArrowPatch
 
 from hips.plotting.colormaps import gradient_cmap
 from hips.plotting.sausage import sausage_plot
@@ -47,6 +41,20 @@ default_cmap = gradient_cmap(default_colors)
 
 from zimmer.util import states_to_changepoints
 from tqdm import tqdm
+
+
+
+class Arrow3D(FancyArrowPatch):
+    # From https://stackoverflow.com/questions/22867620/putting-arrowheads-on-vectors-in-matplotlibs-3d-plot
+    def __init__(self, xs, ys, zs, *args, **kwargs):
+        FancyArrowPatch.__init__(self, (0,0), (0,0), *args, **kwargs)
+        self._verts3d = xs, ys, zs
+
+    def draw(self, renderer):
+        xs3d, ys3d, zs3d = self._verts3d
+        xs, ys, zs = proj3d.proj_transform(xs3d, ys3d, zs3d, renderer.M)
+        self.set_positions((xs[0],ys[0]),(xs[1],ys[1]))
+        FancyArrowPatch.draw(self, renderer)
 
 
 def plot_1d_continuous_states(x_inf, z_inf, z_zimmer, colors,
@@ -123,7 +131,9 @@ def plot_3d_continuous_states(x, z, colors,
 
     if ax is None:
         fig = plt.figure(figsize=figsize)
+        fig.patch.set_alpha(0)
         ax = fig.add_subplot(111, projection="3d")
+        ax.patch.set_alpha(0)
 
     cps = states_to_changepoints(z)
 
@@ -154,6 +164,8 @@ def plot_3d_continuous_states(x, z, colors,
 
     if filename is not None:
         plt.savefig(os.path.join(results_dir, filename))
+
+    return ax
 
 
 def plot_vector_field(ax, dds, zs, xs, sigma_xs, kk, inds=(0, 1), P=3, P_in=0,
@@ -296,6 +308,69 @@ def plot_vector_field_2d(ii, z, x, perm_dynamics_distns, colors,
 
 def plot_vector_field_3d(ii, z, x, dynamics_distns, colors,
                          ax=None, lims=(-3,3), N_plot=500,
+                         scale=1.5,
+                         **kwargs):
+
+    qargs = dict(lw=.5)
+    qargs.update(kwargs)
+
+    D = x.shape[1]
+    ini = np.where(z == ii)[0]
+
+    # Look at the projected dynamics under each model
+    # Subsample accordingly
+    if ini.size > N_plot:
+        ini_inds = np.random.choice(ini.size, replace=False, size=N_plot)
+        ini = ini[ini_inds]
+
+    Ai_full = dynamics_distns[ii].A \
+        if hasattr(dynamics_distns[ii], 'A') \
+        else dynamics_distns[ii].A_0
+
+    Ai = Ai_full[:, :D]
+    bi = Ai_full[:, D] if Ai_full.shape[1] == D+1 else 0
+    dxdt = x.dot(Ai.T) + bi - x
+
+    # Create axis if not given
+    if ax is None:
+        fig = plt.figure(figsize=(5, 5))
+        ax = fig.add_subplot(111, projection='3d')
+
+    # ax.quiver(x[ini, 0], x[ini, 1], x[ini, 2],
+    #           dxdt[ini, 0], dxdt[ini, 1], dxdt[ini, 2],
+    #           color=colors[ii],
+    #           **qargs)
+
+    dxdt_rescaled = scale * dxdt
+    # dxdt_rescaled = np.clip(scale * dxdt, .25, 1)
+
+    for i in ini:
+        a = Arrow3D([x[i, 0], x[i, 0] + dxdt_rescaled[i, 0]],
+                    [x[i, 1], x[i, 1] + dxdt_rescaled[i, 1]],
+                    [x[i, 2], x[i, 2] + dxdt_rescaled[i, 2]],
+                    mutation_scale=2,
+                    arrowstyle="-|>",
+                    color=colors[ii],
+                    **qargs)
+        ax.add_artist(a)
+
+    ax.set_xlabel('dim 1', labelpad=-18, fontsize=6)
+    ax.set_ylabel('dim 2', labelpad=-18, fontsize=6)
+    ax.set_zlabel('dim 3', labelpad=-18, fontsize=6)
+    ax.set_xticklabels([])
+    ax.set_yticklabels([])
+    ax.set_zticklabels([])
+    ax.set_xlim(lims)
+    ax.set_ylim(lims)
+    ax.set_zlim(lims)
+    ax.w_xaxis.set_pane_color((.9, .9, .9, 0.1))
+    ax.w_yaxis.set_pane_color((.9, .9, .9, 0.1))
+    ax.w_zaxis.set_pane_color((.9, .9, .9, 0.1))
+
+
+
+def plot_vector_field_3d_old(ii, z, x, dynamics_distns, colors,
+                         ax=None, lims=(-3,3), N_plot=500,
                          **kwargs):
 
     qargs = dict(arrow_length_ratio=0.66,
@@ -347,12 +422,13 @@ def plot_vector_field_3d(ii, z, x, dynamics_distns, colors,
 
 
 def plot_3d_dynamics(dynamics_distns, z, x,
+                     simss=None,
                      colors=None,
                      lim=None,
                      filepath=None):
     colors = default_colors if colors is None else colors
     for k in range(len(dynamics_distns)):
-        fig = plt.figure(figsize=(1.4, 1.5))
+        fig = plt.figure(figsize=(1.5, 1.5))
         # ax = fig.add_subplot(111, projection='3d')
         ax = create_axis_at_location(fig, 0.05, 0.05, 1.3, 1.3, projection="3d")
 
@@ -360,7 +436,15 @@ def plot_3d_dynamics(dynamics_distns, z, x,
                              N_plot=50,
                              ax=ax,
                              lims=(-lim, lim), )
-        ax.set_title("state {}".format(k+1), fontsize=6)
+
+        if simss is not None:
+            assert isinstance(simss, list) and len(simss) == len(dynamics_distns)
+            for sim in simss[k]:
+                assert sim.ndim == 2 and sim.shape[1] == dynamics_distns[0].D_out
+                plt.plot(sim[:,0], sim[:,1], sim[:,2], 'k', lw=1)
+                plt.plot([sim[-1,0]], [sim[-1, 1]], [sim[-1,2]], 'k^', markersize=4)
+
+        ax.set_title("syllable {}".format(k+1), fontsize=8)
 
         if filepath is not None:
             if filepath.endswith('.pdf'):
@@ -392,8 +476,11 @@ def plot_2d_dynamics(dynamics_distns, z, x,
 
 def make_states_dynamics_movie(
         dynamics_distns, z, x,
-        lim=None,
+        simss=None,
+        sims_lw=1,
+        sims_ms=4,
         colors=None,
+        lim=None,
         filepath=None):
 
     colors = default_colors if colors is None else colors
@@ -406,25 +493,23 @@ def make_states_dynamics_movie(
         metadata = dict(title='3d dynamics {}'.format(k))
         writer = FFMpegWriter(fps=15, bitrate=1024, metadata=metadata)
 
-        fig = plt.figure(figsize=(4, 4))
+        fig = plt.figure(figsize=(1.5, 1.5))
         # ax = fig.add_subplot(111, projection='3d')
-        ax = create_axis_at_location(fig, 0.05, 0.05, 3.9, 3.9, projection="3d")
+        ax = create_axis_at_location(fig, 0.05, 0.05, 1.3, 1.3, projection="3d")
+
         plot_vector_field_3d(k, z, x, dynamics_distns, colors,
-                             arrow_length_ratio=0.5, pivot="middle",
-                             ax=ax, lims=(-6, 6), alpha=0.8, N_plot=200, length=0.5, lw=1.0)
-        ax.set_title("State {}".format(k + 1))
+                             N_plot=100,
+                             ax=ax,
+                             lims=(-lim, lim), )
 
-        ax.set_xlabel("")
-        ax.set_ylabel("")
-        ax.set_zlabel("")
-        ax.set_xticklabels([])
-        ax.set_yticklabels([])
-        ax.set_zticklabels([])
+        if simss is not None:
+            assert isinstance(simss, list) and len(simss) == len(dynamics_distns)
+            for sim in simss[k]:
+                assert sim.ndim == 2 and sim.shape[1] == dynamics_distns[0].D_out
+                plt.plot(sim[:,0], sim[:,1], sim[:,2], 'k', lw=sims_lw)
+                plt.plot([sim[-1,0]], [sim[-1, 1]], [sim[-1,2]], 'k^', markersize=sims_ms)
 
-        if lim is not None:
-            ax.set_xlim(-lim,lim)
-            ax.set_ylim(-lim,lim)
-            ax.set_zlim(-lim,lim)
+        ax.set_title("syllable {}".format(k+1), fontsize=8)
 
         def update_frame(i):
             # Rotate the xy plane
@@ -433,7 +518,7 @@ def make_states_dynamics_movie(
             # Plot the trajectories
             #         plot_trajectories(i, lns)
 
-        with writer.saving(fig, filepath + "_{}.mp4".format(k), 150):
+        with writer.saving(fig, filepath + "_{}.mp4".format(k), 300):
             for i in tqdm(range(360)):
                 update_frame(i)
                 writer.grab_frame()
@@ -444,14 +529,17 @@ def plot_transition_matrix(P, colors, cmap,
 
     K = P.shape[0]
     # Look at the transition matrix
-    fig = plt.figure(figsize=(10, 5))
-    ax = fig.add_subplot(121)
+    fig = plt.figure(figsize=(3, 3))
+    fig.patch.set_alpha(0)
+    ax = fig.add_subplot(111)
+    ax.patch.set_alpha(0)
+
     im = ax.imshow(P, interpolation="nearest", cmap="Greys", vmin=0, vmax=1.0)
     ax.set_xticks([])
     ax.set_yticks([])
-    ax.set_xlabel("$z_{t+1}$", fontsize=15, labelpad=30)
-    ax.set_ylabel("$z_{t}$", fontsize=15, labelpad=30)
-    ax.set_title("Transition Matrix", fontsize=18)
+    # ax.set_xlabel("$z_{t+1}$", fontsize=15, labelpad=30)
+    # ax.set_ylabel("$z_{t}$", fontsize=15, labelpad=30)
+    # ax.set_title("Transition Matrix", fontsize=18)
 
     divider = make_axes_locatable(ax)
     lax = divider.append_axes("left", size="5%", pad=0.05)
@@ -469,32 +557,32 @@ def plot_transition_matrix(P, colors, cmap,
     cax = divider.append_axes("right", size="5%", pad=0.05)
     plt.colorbar(im, cax=cax)
 
-    # View the off diagonal elements
-    Pod = P - np.diag(np.diag(P))
-    vmax = np.max(Pod)
-    ax = fig.add_subplot(122)
-    im = ax.imshow(Pod, interpolation="nearest", cmap="Greys", vmin=0, vmax=vmax)
-    ax.set_xticks([])
-    ax.set_yticks([])
-    ax.set_xlabel("$z_{t+1}$", fontsize=15, labelpad=30)
-    ax.set_ylabel("$z_{t}$", fontsize=15, labelpad=30)
-    ax.set_title("Off Diagonal Only", fontsize=18)
-
-    divider = make_axes_locatable(ax)
-    lax = divider.append_axes("left", size="5%", pad=0.05)
-    lax.imshow(np.arange(K)[:, None], cmap=cmap, vmin=0, vmax=len(colors) - 1, aspect="auto",
-               interpolation="nearest")
-    lax.set_xticks([])
-    lax.set_yticks([])
-
-    bax = divider.append_axes("bottom", size="5%", pad=0.05)
-    bax.imshow(np.arange(K)[None, :], cmap=cmap, vmin=0, vmax=len(colors) - 1, aspect="auto",
-               interpolation="nearest")
-    bax.set_xticks([])
-    bax.set_yticks([])
-
-    cax = divider.append_axes("right", size="5%", pad=0.05)
-    plt.colorbar(im, cax=cax)
+    # # View the off diagonal elements
+    # Pod = P - np.diag(np.diag(P))
+    # vmax = np.max(Pod)
+    # ax = fig.add_subplot(122)
+    # im = ax.imshow(Pod, interpolation="nearest", cmap="Greys", vmin=0, vmax=vmax)
+    # ax.set_xticks([])
+    # ax.set_yticks([])
+    # ax.set_xlabel("$z_{t+1}$", fontsize=15, labelpad=30)
+    # ax.set_ylabel("$z_{t}$", fontsize=15, labelpad=30)
+    # ax.set_title("Off Diagonal Only", fontsize=18)
+    #
+    # divider = make_axes_locatable(ax)
+    # lax = divider.append_axes("left", size="5%", pad=0.05)
+    # lax.imshow(np.arange(K)[:, None], cmap=cmap, vmin=0, vmax=len(colors) - 1, aspect="auto",
+    #            interpolation="nearest")
+    # lax.set_xticks([])
+    # lax.set_yticks([])
+    #
+    # bax = divider.append_axes("bottom", size="5%", pad=0.05)
+    # bax.imshow(np.arange(K)[None, :], cmap=cmap, vmin=0, vmax=len(colors) - 1, aspect="auto",
+    #            interpolation="nearest")
+    # bax.set_xticks([])
+    # bax.set_yticks([])
+    #
+    # cax = divider.append_axes("right", size="5%", pad=0.05)
+    # plt.colorbar(im, cax=cax)
 
     plt.tight_layout()
     plt.savefig(os.path.join(results_dir, filename))
@@ -542,12 +630,16 @@ def plot_discrete_state_samples(z_smpls, z_true, Kmax,
     if filepath is not None:
         plt.savefig(filepath)
 
-def plot_changepoint_prs(z_smpls, z_true, title=None, plt_slice=(0, 2500),
+def plot_changepoint_prs(z_smpls, z_true, title=None, plt_slice=None,
                          cmap=None, colors=None,
+                         true_colors=None, true_cmap=None,
                          filepath=None):
 
     colors = default_colors if colors is None else colors
     cmap = default_cmap if cmap is None else cmap
+    true_colors = default_colors if true_colors is None else true_colors
+    true_cmap = default_cmap if true_cmap is None else true_cmap
+    plt_slice = (0, z_smpls.shape[1]) if plt_slice is None else plt_slice
 
     # Plot the true and inferred state sequences
     N_samples = z_smpls.shape[0]
@@ -575,13 +667,16 @@ def plot_changepoint_prs(z_smpls, z_true, title=None, plt_slice=(0, 2500),
     changepoint_pr = np.mean(sampled_changepoints, axis=0)
     ax2.plot(changepoint_pr, '-k', lw=0.5)
     ax2.set_xticks([])
-    ax2.set_yticks([0, .5, 1])
-    ax2.set_ylabel("CP Pr.", labelpad=20, rotation=0)
+    ax2.set_yticks([0, 1])
+    ax2.set_ylabel("changepoint\n"
+                   "probability",
+                   labelpad=35, rotation=0,
+                   horizontalalignment="center")
     ax2.set_xlim(plt_slice)
 
-    ax3.matshow(z_true[None, :], aspect='auto', cmap=cmap, vmin=0, vmax=len(colors) - 1)
+    ax3.matshow(z_true[None, :], aspect='auto', cmap=true_cmap, vmin=0, vmax=len(true_colors) - 1)
     ax3.set_yticks([])
-    ax3.set_ylabel("Kato et al", labelpad=35, rotation=0)
+    ax3.set_ylabel("manual\nstates", labelpad=35, rotation=0, horizontalalignment="center")
     ax3.set_xlabel("Time")
     ax3.set_xlim(plt_slice)
     # ax3.set_xticks(plt_slice)
@@ -707,7 +802,8 @@ def plot_state_overlap(z_finals, z_trues,
                        z_colors=None,
                        titles=None,
                        permute=True,
-                       results_dir=None):
+                       results_dir=None,
+                       fig_name=""):
     colors = default_colors if colors is None else colors
     z_colors = default_colors if z_colors is None else z_colors
     Kmax = np.max(np.concatenate(z_finals)) + 1
@@ -757,7 +853,7 @@ def plot_state_overlap(z_finals, z_trues,
     for z_true, z_inf in zip(z_trues, z_finals):
         for k1 in range(K_zimmer):
             for k2 in range(Kmax):
-                overlap[k1, k2] = np.sum((z_true == k1) & (z_inf == k2))
+                overlap[k1, k2] += np.sum((z_true == k1) & (z_inf == k2))
                 
     if permute:
         # Use the Hungarian algorithm to find a permutation of states that
@@ -775,7 +871,7 @@ def plot_state_overlap(z_finals, z_trues,
 
     # Normalize the overlap from all worms and plot
     overlap /= overlap.sum(1)[:, None]
-    _plot_overlap(overlap, perm, "overlap_all.pdf", "state overlap (all worms)")
+    _plot_overlap(overlap, perm, "overlap{}_all.pdf".format(fig_name), "state overlap")
 
     # Compare zimmer labels to inferred labels
     for worm, (z_true, z_inf) in enumerate(zip(z_trues, z_finals)):
@@ -786,7 +882,7 @@ def plot_state_overlap(z_finals, z_trues,
 
         # Normalize the rows
         overlap /= overlap.sum(1)[:, None]
-        _plot_overlap(overlap, perm, "overlap_{}.pdf".format(worm), titles[worm])
+        _plot_overlap(overlap, perm, "overlap{}_{}.pdf".format(fig_name, worm), titles[worm])
 
 
 def plot_state_usage_by_worm(z_finals,
@@ -1295,6 +1391,258 @@ def plot_simulated_trajectories3(k, x_sims, C, d, T,
         plt.savefig(os.path.join(results_dir, "neural_samples_{}.pdf".format(k)))
 
 
+
+def plot_simulated_trajectories4(x_simss, C, d, T,
+                                colors=None,
+                                results_dir=None,
+                                ylim=.15,
+                                ):
+    """
+    Similar to above but with only neural activity and one per syllable
+    """
+    colors = default_colors if colors is None else colors
+    N_clusters, D = C.shape
+
+    # Find and plot the partial trajectories of this state
+    fig = plt.figure(figsize=(3, 2))
+    # left = 0.4
+    # pwidth = .65
+    # width = .55
+    # bottom = .25
+    # height = .6
+
+    # Plot the neural activity
+    for k, x_sims in enumerate(x_simss):
+        ax = fig.add_subplot(2, 4, k+1)
+        for i, x_sim in enumerate(x_sims):
+            y_sim = x_sim.dot(C.T) + d
+            t_sim = np.arange(x_sim.shape[0]) / 3.0
+
+            for c in range(N_clusters):
+                ax.plot([0, T / 3.], -np.ones(2) * c * 2 * ylim, ':k', lw=.5)
+                ax.plot(t_sim, y_sim[:, c] - c * 2 * ylim, '-', color=colors[k], lw=1)
+
+            if k % 4 == 0:
+                ax.set_ylabel("neural activity\nper cluster", fontsize=6)
+                ax.set_yticks(-np.arange(N_clusters, step=2) * 2 * ylim)
+                ax.set_yticklabels(np.arange(N_clusters, step=2) + 1, size=5)
+            else:
+                ax.set_yticks([])
+
+            ax.set_ylim(-(2 * N_clusters - 1) * ylim, ylim)
+
+            if k >= 4:
+                ax.set_xlabel("time (sec)", fontsize=6, labelpad=0)
+                ax.set_xticks([0, 5, 10])
+            else:
+                ax.set_xticks([])
+
+            ax.set_xlim(0, 10)
+            ax.tick_params(labelsize=5)
+
+            # if k == 0:
+            #     ax.set_title("simulated\ntrajectory #{}".format(i+1), fontsize=6)
+        ax.set_title("syllable {}".format(k+1), fontsize=6, y=.95)
+
+    plt.suptitle("simulated trajectories", fontsize=8)
+
+    plt.tight_layout(pad=.2, rect=(0,0,1,.925))
+
+    if results_dir is not None:
+        plt.savefig(os.path.join(results_dir, "neural_samples.pdf"))
+
+
+#
+# def plot_simulated_cluster_activation(x_simss, C, d,
+#                                 colors=None,
+#                                 results_dir=None,
+#                                 ):
+#     """
+#     Similar to above but with only neural activity
+#     """
+#     colors = default_colors if colors is None else colors
+#     N_clusters, D = C.shape
+#     K = len(x_simss)
+#
+#     activation = np.zeros((K, N_clusters))
+#     delta_activation = np.zeros((K, N_clusters))
+#     power = np.zeros((K, N_clusters))
+#     for k, x_sims in enumerate(x_simss):
+#         for i, x_sim in enumerate(x_sims):
+#             y_sim = x_sim.dot(C.T) + d
+#
+#             # compute average activation and power (squared activation)
+#             # along each cluster
+#             activation[k, :] += (y_sim).mean(0)
+#             delta_activation[k, :] += y_sim[-1] - y_sim[0]
+#             power[k, :] += (y_sim**2).mean(0)
+#
+#         # Normalize by number of simulations
+#         activation[k, :] /= len(x_sims)
+#         delta_activation[k, :] /= len(x_sims)
+#         power[k, :] /= len(x_sims)
+#
+#     # Plot the activation
+#     fig = plt.figure(figsize=(3, 1.))
+#     ax = fig.add_subplot(111)
+#     lim = .1
+#     im = plt.imshow(activation, cmap=gradient_cmap([colors[0], np.ones(3), colors[1]]),
+#                vmin=-lim, vmax=lim, aspect="auto", extent=(.5, N_clusters+.5, K+.5, .5))
+#     plt.xlabel("cluster", fontsize=6, labelpad=-.5)
+#     plt.xticks(np.arange(1, N_clusters+1, 1))
+#     plt.ylabel("syllable", fontsize=6)
+#     plt.yticks(np.arange(1, K+1, 1))
+#     ax.tick_params(labelsize=6)
+#     plt.title("average cluster activation", fontsize=8)
+#
+#     divider = make_axes_locatable(ax)
+#     cbax = divider.append_axes("right", "5%", pad=.1)
+#     plt.colorbar(im, cax=cbax, ticks=[-lim, 0, lim])
+#     cbax.tick_params(labelsize=6)
+#     plt.tight_layout(pad=.1)
+#     if results_dir is not None:
+#         plt.savefig(os.path.join(results_dir, "avg_activation.pdf"))
+#
+#     # Plot the delta activation
+#     fig = plt.figure(figsize=(3, 1.))
+#     ax = fig.add_subplot(111)
+#     lim = .15
+#     im = plt.imshow(delta_activation, cmap=gradient_cmap([colors[0], np.ones(3), colors[1]]),
+#                     vmin=-lim, vmax=lim,
+#                     aspect="auto", extent=(.5, N_clusters + .5, K + .5, .5))
+#     plt.xlabel("cluster", fontsize=6, labelpad=-.5)
+#     plt.xticks(np.arange(1, N_clusters + 1, 1))
+#     plt.ylabel("syllable", fontsize=6)
+#     plt.yticks(np.arange(1, K + 1, 1))
+#     ax.tick_params(labelsize=6)
+#     plt.title("average change in cluster activation", fontsize=8)
+#
+#     divider = make_axes_locatable(ax)
+#     cbax = divider.append_axes("right", "5%", pad=.1)
+#     plt.colorbar(im, cax=cbax, ticks=[-lim, 0, lim])
+#     cbax.tick_params(labelsize=6)
+#     plt.tight_layout(pad=.1)
+#     if results_dir is not None:
+#         plt.savefig(os.path.join(results_dir, "avg_delta_activation.pdf"))
+#
+#     # Plot the power
+#     # fig = plt.figure(figsize=(3, 1.5))
+#     # ax = fig.add_subplot(111)
+#     # lim = power.max()
+#     # im = plt.imshow(power, cmap="Greys",
+#     #                 vmin=0, vmax=lim, aspect="auto", extent=(.5, N_clusters+.5, K+.5, .5))
+#     # plt.xlabel("cluster", fontsize=8)
+#     # plt.xticks(np.arange(1, N_clusters + 1, 2))
+#     # plt.ylabel("syllable", fontsize=8)
+#     # plt.yticks(np.arange(1, K + 1, 2))
+#     # ax.tick_params(labelsize=6)
+#     # plt.title("average squared cluster activation", fontsize=8)
+#     #
+#     # divider = make_axes_locatable(ax)
+#     # cbax = divider.append_axes("right", "5%", pad=.1)
+#     # plt.colorbar(im, cax=cbax, ticks=[0, lim])
+#     # cbax.tick_params(labelsize=6)
+#     #
+#     # plt.tight_layout(pad=.1)
+#     #
+#     # if results_dir is not None:
+#     #     plt.savefig(os.path.join(results_dir, "avg_power.pdf"))
+
+
+def plot_simulated_cluster_activation(x_simss, C, d,
+                                colors=None,
+                                results_dir=None,
+                                ):
+    """
+    Similar to above but with only neural activity
+    """
+    colors = default_colors if colors is None else colors
+    N_clusters, D = C.shape
+    K = len(x_simss)
+
+    activation = np.zeros((K, N_clusters))
+    delta_activation = np.zeros((K, N_clusters))
+    power = np.zeros((K, N_clusters))
+    for k, x_sims in enumerate(x_simss):
+        for i, x_sim in enumerate(x_sims):
+            y_sim = x_sim.dot(C.T) + d
+
+            # compute average activation and power (squared activation)
+            # along each cluster
+            activation[k, :] += (y_sim).mean(0)
+            delta_activation[k, :] += y_sim[-1] - y_sim[0]
+            power[k, :] += (y_sim**2).mean(0)
+
+        # Normalize by number of simulations
+        activation[k, :] /= len(x_sims)
+        delta_activation[k, :] /= len(x_sims)
+        power[k, :] /= len(x_sims)
+
+    # Plot the activation
+    fig = plt.figure(figsize=(1.5, 2.))
+    ax = fig.add_subplot(111)
+    lim = .15
+    im = plt.imshow(activation.T, cmap=gradient_cmap([colors[0], np.ones(3), colors[1]]),
+               vmin=-lim, vmax=lim, aspect="auto", extent=(.5, K+.5, N_clusters+.5, .5))
+    plt.ylabel("cluster", fontsize=6, labelpad=-.5)
+    plt.yticks(np.arange(1, N_clusters+1, 1))
+    plt.xlabel("syllable", fontsize=6)
+    plt.xticks(np.arange(1, K+1, 1))
+    ax.tick_params(labelsize=6)
+    plt.title("average\ncluster activation", fontsize=8)
+
+    divider = make_axes_locatable(ax)
+    cbax = divider.append_axes("right", "10%", pad=.05)
+    plt.colorbar(im, cax=cbax, ticks=[-lim, 0, lim])
+    cbax.tick_params(labelsize=6)
+    plt.tight_layout(pad=.1)
+    if results_dir is not None:
+        plt.savefig(os.path.join(results_dir, "avg_activation.pdf"))
+
+    # Plot the delta activation
+    fig = plt.figure(figsize=(1.5, 2.))
+    ax = fig.add_subplot(111)
+    lim = .15
+    im = plt.imshow(delta_activation.T, cmap=gradient_cmap([colors[0], np.ones(3), colors[1]]),
+                    vmin=-lim, vmax=lim, aspect="auto", extent=(.5, K + .5, N_clusters + .5, .5))
+    plt.ylabel("cluster", fontsize=6, labelpad=-.5)
+    plt.yticks(np.arange(1, N_clusters + 1, 1))
+    plt.xlabel("syllable", fontsize=6)
+    plt.xticks(np.arange(1, K + 1, 1))
+    ax.tick_params(labelsize=6)
+    plt.title("average change in\ncluster activation", fontsize=8)
+
+    divider = make_axes_locatable(ax)
+    cbax = divider.append_axes("right", "10%", pad=.05)
+    plt.colorbar(im, cax=cbax, ticks=[-lim, 0, lim])
+    cbax.tick_params(labelsize=6)
+    plt.tight_layout(pad=.1)
+    if results_dir is not None:
+        plt.savefig(os.path.join(results_dir, "avg_delta_activation.pdf"))
+
+    # Plot the power
+    # fig = plt.figure(figsize=(3, 1.5))
+    # ax = fig.add_subplot(111)
+    # lim = power.max()
+    # im = plt.imshow(power, cmap="Greys",
+    #                 vmin=0, vmax=lim, aspect="auto", extent=(.5, N_clusters+.5, K+.5, .5))
+    # plt.xlabel("cluster", fontsize=8)
+    # plt.xticks(np.arange(1, N_clusters + 1, 2))
+    # plt.ylabel("syllable", fontsize=8)
+    # plt.yticks(np.arange(1, K + 1, 2))
+    # ax.tick_params(labelsize=6)
+    # plt.title("average squared cluster activation", fontsize=8)
+    #
+    # divider = make_axes_locatable(ax)
+    # cbax = divider.append_axes("right", "5%", pad=.1)
+    # plt.colorbar(im, cax=cbax, ticks=[0, lim])
+    # cbax.tick_params(labelsize=6)
+    #
+    # plt.tight_layout(pad=.1)
+    #
+    # if results_dir is not None:
+    #     plt.savefig(os.path.join(results_dir, "avg_power.pdf"))
+
 def plot_recurrent_transitions(trans_distn, xs, zs,
                                perm=None,
                                results_dir=None):
@@ -1394,14 +1742,13 @@ def plot_duration_histogram(trans_distn, zs, sim_durs,
     K = np.max(states) + 1
     perm = np.arange(K) if perm is None else perm
 
-    logpi = trans_distn.logpi[np.ix_(perm, perm)]
-    P = np.exp(logpi)
-    P /= P.sum(axis=1, keepdims=True)
+    # logpi = trans_distn.logpi[np.ix_(perm, perm)]
+    # P = np.exp(logpi)
+    # P /= P.sum(axis=1, keepdims=True)
 
     for k in range(K):
-    # for k in range(1):
-        p_stay = P[k, k]
-        g = geom(1-p_stay)
+        # p_stay = P[k, k]
+        # g = geom(1-p_stay)
         dk = durs[states == k]
         dmax = dk.max()
         bins = np.linspace(0, dmax+1, 15)
@@ -1414,7 +1761,6 @@ def plot_duration_histogram(trans_distn, zs, sim_durs,
         plt.bar(bins[:-1] / 3.0, tmp * 3.0, width=width * 2.0 / 3.0,
                 color=colors[k], alpha=0.75, edgecolor='k', label="Emp")
 
-
         # Plot the histogram of simulated transitions
         if dmax < 30:
             bins = np.arange(1, dmax+1, step=3)
@@ -1425,7 +1771,7 @@ def plot_duration_histogram(trans_distn, zs, sim_durs,
         plt.plot(bins[:-1] / 3.0, tmp * 3.0, '-k', label="Rec")
 
         # Plot the geometric distribution under Markov
-        plt.plot(bins[:-1] / 3.0, g.pmf(bins[:-1]) * 3.0, ':k', label="Mkv")
+        # plt.plot(bins[:-1] / 3.0, g.pmf(bins[:-1]) * 3.0, ':k', label="Mkv")
 
         plt.xlabel("duration (s)")
         plt.ylabel("probability")
@@ -1741,8 +2087,11 @@ def plot_driven_transition_mod(D_input,
 
 
 def make_states_3d_movie(z_finals, x_finals, title=None, lim=None,
+                         inds=(0,1,2),
                          colors=None,
-                         filepath=None):
+                         figsize=(1.2, 1.2),
+                         filepath=None,
+                         **kwargs):
 
     colors = default_colors if colors is None else colors
     FFMpegWriter = manimation.writers['ffmpeg']
@@ -1750,27 +2099,29 @@ def make_states_3d_movie(z_finals, x_finals, title=None, lim=None,
     writer = FFMpegWriter(fps=15, bitrate=1024, metadata=metadata)
 
     # overlay = False
-    fig = plt.figure(figsize=(4, 4))
-    ax = create_axis_at_location(fig, 0, 0, 4, 4, projection="3d")
-    # ax = fig.add_subplot(111, projection='3d')
+    fig = plt.figure(figsize=figsize)
+    # ax = create_axis_at_location(fig, 0, 0, 4, 4, projection="3d")
+    ax = fig.add_subplot(111, projection='3d')
 
     plot_3d_continuous_states(x_finals, z_finals, colors,
                               ax=ax,
-                              lw=1)
+                              **kwargs)
 
-    ax.set_xlabel("")
-    ax.set_ylabel("")
-    ax.set_zlabel("")
+    ax.set_xlabel("dim {}".format(inds[0]+1), labelpad=-18, fontsize=6)
+    ax.set_ylabel("dim {}".format(inds[1]+1), labelpad=-18, fontsize=6)
+    ax.set_zlabel("dim {}".format(inds[2]+1), labelpad=-18, fontsize=6)
     ax.set_xticklabels([])
     ax.set_yticklabels([])
     ax.set_zticklabels([])
-
     if lim is not None:
-        ax.set_xlim(-lim,lim)
-        ax.set_ylim(-lim,lim)
-        ax.set_zlim(-lim,lim)
+        ax.set_xlim(-lim, lim)
+        ax.set_ylim(-lim, lim)
+        ax.set_zlim(-lim, lim)
 
-    plt.title(title)
+    if title is not None:
+        ax.set_title(title, fontsize=8)
+
+    plt.tight_layout(pad=0.1)
 
     def update_frame(i):
         # Rotate the xy plane
@@ -1779,7 +2130,7 @@ def make_states_3d_movie(z_finals, x_finals, title=None, lim=None,
         # Plot the trajectories
         #         plot_trajectories(i, lns)
 
-    with writer.saving(fig, filepath, 150):
+    with writer.saving(fig, filepath, 300):
         for i in tqdm(range(360)):
             update_frame(i)
             writer.grab_frame()

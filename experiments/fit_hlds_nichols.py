@@ -832,6 +832,8 @@ if __name__ == "__main__":
     n_trains = np.array([mtr.sum() for mtr in mtrains])
     n_tests = np.array([mte.sum() for mte in mtests])
 
+    assert False
+
     # D_latents = np.arange(2, 31, 2)
     D_latents = [6]
     best_models = fit_all_models(D_latents)
@@ -874,27 +876,27 @@ if __name__ == "__main__":
     # heldout_neuron_identification()
 
     # Save out the results
-    results = dict(
-        xtrains=xtrains,
-        xtests=xtests,
-        ytrains=ytrains,
-        ytests=ytests,
-        mtrains=mtrains,
-        mtests=mtests,
-        utrains=utrains,
-        utests=utests,
-        z_true_trains=z_true_trains,
-        z_true_tests=z_true_tests,
-        z_key=z_true_key,
-        best_model=best_model,
-        D_latent=best_model.D_latent,
-        C=C,
-        perm=dim_perm,
-        N_clusters=N_clusters,
-        neuron_clusters=neuron_clusters,
-        neuron_perm=neuron_perm,
-        neuron_names=neuron_names,
-    )
-
-    with open(os.path.join(results_dir, "lds_data.pkl"), "wb") as f:
-        pickle.dump(results, f)
+    # results = dict(
+    #     xtrains=xtrains,
+    #     xtests=xtests,
+    #     ytrains=ytrains,
+    #     ytests=ytests,
+    #     mtrains=mtrains,
+    #     mtests=mtests,
+    #     utrains=utrains,
+    #     utests=utests,
+    #     z_true_trains=z_true_trains,
+    #     z_true_tests=z_true_tests,
+    #     z_key=z_true_key,
+    #     best_model=best_model,
+    #     D_latent=best_model.D_latent,
+    #     C=C,
+    #     perm=dim_perm,
+    #     N_clusters=N_clusters,
+    #     neuron_clusters=neuron_clusters,
+    #     neuron_perm=neuron_perm,
+    #     neuron_names=neuron_names,
+    # )
+    #
+    # with open(os.path.join(results_dir, "lds_data.pkl"), "wb") as f:
+    #     pickle.dump(results, f)

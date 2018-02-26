@@ -44,13 +44,19 @@ from zimmer.io import WormData, load_kato_key
 from zimmer.models import HierarchicalLDS
 from zimmer.emissions import HierarchicalDiagonalRegression
 from zimmer.plotting import plot_3d_continuous_states
+
+from zimmer.plotting import make_states_3d_movie
 from pybasicbayes.distributions import Regression, DiagonalRegression
 from pylds.models import MissingDataLDS
 
 # IO
-run_num = 3
-results_dir = os.path.join("results", "2017-11-03-hlds", "run{:03d}".format(run_num))
-signal = "dff_diff"
+# run_num = 3
+# results_dir = os.path.join("results", "2017-11-03-hlds", "run{:03d}".format(run_num))
+# signal = "dff_diff"
+run_num = 1
+results_dir = os.path.join("results", "2018-01-17-hlds", "run{:03d}".format(run_num))
+signal = "dff_deriv"
+
 
 assert os.path.exists(results_dir)
 fig_dir = os.path.join(results_dir, "figures")
@@ -189,7 +195,7 @@ def _fit_lds(D_latent, D_in=1, alpha_0=1.0, beta_0=1.0,
 
     datas = ytrains if datas is None else datas
     masks = mtrains if masks is None else masks
-    for i in range(N_worms):
+    for i in range(len(datas)):
         data_kwargs = dict(group=i) if is_hierarchical else dict()
         model.add_data(datas[i], mask=masks[i],
                        inputs=np.ones((datas[i].shape[0], 1)),
@@ -315,6 +321,7 @@ def cluster_neruons(best_model, seed=0):
 
 
 def plot_best_model_results(best_model,
+                            do_plot_pca=True,
                             do_plot_x_3d=True,
                             do_plot_x_2d=True,
                             do_plot_sigmasq=True,
@@ -326,29 +333,82 @@ def plot_best_model_results(best_model,
                             do_plot_data_wide=True,
                             do_plot_data_zoom=True,
                             do_plot_data_as_matrix=True,
-                            do_plot_smoothed_data_as_matrix=True):
+                            do_plot_smoothed_data_as_matrix=True,
+                            do_plot_cluster_types=True):
+
+    if do_plot_pca:
+        from sklearn.decomposition import PCA
+        for i in range(N_worms):
+            # plot_3d_continuous_states(xtrains[i], np.zeros(xtrains[i].shape[0], dtype=int), colors,
+            #                           figsize=(1.2, 1.2),
+            #                           # title="LDS Worm {} States (Zimmer Lables)".format(i + 1),
+            #                           results_dir=fig_dir,
+            #                           filename="xtr_{}.pdf".format(i + 1),
+            #                           # lim=1.5,
+            #                           lw=1, alpha=0.85)
+            # pca = PCA(3)
+            # yi = ytrains[i][:, mtrains[i][0]]
+            # assert False
+            # x = pca.fit_transform(yi)
+            model, _, _ = _fit_lds(3, datas=[ytrains[i]], masks=[mtrains[i]], compute_hll=False)
+            x = model.states_list[0].gaussian_states
+            make_states_3d_movie(np.zeros(1000, dtype=int),
+                                 x[:1000],
+                                 title=None,
+                                 lim=None,
+                                 inds=(0, 1, 2),
+                                 colors=colors,
+                                 figsize=(1.2, 1.2),
+                                 filepath=os.path.join(fig_dir, "x_pca_{}.mp4".format(i+1)),
+                                 lw=0.25)
+
+        plt.close("all")
+
 
     # False color with the "true" label from Zimmer
     if do_plot_x_3d:
         for i in range(N_worms):
-            plot_3d_continuous_states(xtrains[i], z_true_trains[i], colors,
-                                      figsize=(4, 4),
-                                      title="LDS Worm {} States (Zimmer Lables)".format(i + 1),
+            plot_3d_continuous_states(xtrains[i], np.zeros(xtrains[i].shape[0], dtype=int), colors,
+                                      figsize=(1.2, 1.2),
+                                      # title="LDS Worm {} States (Zimmer Lables)".format(i + 1),
                                       results_dir=fig_dir,
-                                      filename="xtr_zimmer_{}.pdf".format(i + 1),
+                                      filename="xtr_{}.pdf".format(i + 1),
                                       # lim=1.5,
-                                      lw=1)
+                                      lw=1, alpha=0.85)
+
+            # make_states_3d_movie(np.zeros(1000, dtype=int),
+            #                      xtrains[i][:1000],
+            #                      title=None,
+            #                      lim=None,
+            #                      inds=(0, 1, 2),
+            #                      colors=colors,
+            #                      figsize=(1.2, 1.2),
+            #                      filepath=os.path.join(fig_dir, "xtr_{}.mp4".format(i+1)),
+            #                      lw=0.25)
+
         plt.close("all")
 
-        # for i in range(N_worms):
-        #     plot_3d_continuous_states(xtests[i], z_true_tests[i], colors,
-        #                               figsize=(4, 4),
-        #                               title="LDS Worm {} States (Zimmer Lables)".format(i + 1),
-        #                               results_dir=fig_dir,
-        #                               filename="xte_zimmer_{}.pdf".format(i + 1),
-        #                               lim=1.5,
-        #                               lw=1)
-        # plt.close("all")
+
+    # if do_plot_x_3d:
+    #     for i in range(N_worms):
+    #         plot_3d_continuous_states(xtrains[i], z_true_trains[i], colors,
+    #                                   figsize=(4, 4),
+    #                                   title="LDS Worm {} States (Zimmer Lables)".format(i + 1),
+    #                                   results_dir=fig_dir,
+    #                                   filename="xtr_zimmer_{}.pdf".format(i + 1),
+    #                                   # lim=1.5,
+    #                                   lw=1)
+    #     plt.close("all")
+    #
+    #     # for i in range(N_worms):
+    #     #     plot_3d_continuous_states(xtests[i], z_true_tests[i], colors,
+    #     #                               figsize=(4, 4),
+    #     #                               title="LDS Worm {} States (Zimmer Lables)".format(i + 1),
+    #     #                               results_dir=fig_dir,
+    #     #                               filename="xte_zimmer_{}.pdf".format(i + 1),
+    #     #                               lim=1.5,
+    #     #                               lw=1)
+    #     # plt.close("all")
 
     if do_plot_x_2d:
         pass
@@ -837,6 +897,51 @@ def plot_best_model_results(best_model,
 
         plt.close("all")
 
+    if do_plot_cluster_types:
+        import pandas
+        all_types = pandas.read_csv("wormatlas_celltypes.csv", header=0,
+                                 dtype=dict(Name=str, S=int, I=int, M=int, P=int, U=int))
+
+        type_names = ["S", "I", "M", "P", "U"]
+        type_colors = [colors[7], colors[1], colors[4], colors[6], "gray"]
+
+        fig = plt.figure(figsize=(1.6, 1.0))
+        # ax = create_axis_at_location(fig, 0.3, 0.05, 2.1, .9)
+        ax = fig.add_subplot(111)
+
+        # Break down cells into 5 types: sensory, inter, motor, poly, unknown
+        for cluster in range(N_clusters):
+            inds = np.where(neuron_clusters == cluster)[0]
+            cluster_types = np.zeros(5)
+            for i, key in enumerate(type_names):
+                cluster_types[i] = all_types[key].values[inds].sum()
+            assert cluster_types.sum() == len(inds)
+            bottom = np.concatenate(([0], np.cumsum(cluster_types)[:-1]))
+
+            for i in range(5):
+                ax.bar(cluster, cluster_types[i], width=0.8, bottom=bottom[i],
+                       color=type_colors[i],
+                       edgecolor='k', linewidth=.5,
+                       label=type_names[i] if cluster == 0 else None
+                       )
+
+        plt.xticks(np.arange(N_clusters), np.arange(N_clusters) + 1)
+        plt.xlabel("cluster", fontsize=6, labelpad=-1)
+        plt.ylabel("cell count", fontsize=6)
+        plt.ylim(0, 15)
+
+        ax.tick_params(labelsize=6)
+        # ax.spines["left"].set_visible(False)
+        ax.spines["top"].set_visible(False)
+        ax.spines["right"].set_visible(False)
+        # ax.spines["bottom"].set_visible(False)
+        ax.legend(loc="upper left", ncol=3, fontsize=6, borderpad=0, handlelength=1, labelspacing=.5, columnspacing=.5, handletextpad=.5)
+
+        plt.tight_layout(pad=.1)
+
+        plt.savefig(os.path.join(fig_dir, "cluster_types.pdf"))
+        plt.show()
+
 def fit_all_models(D_latents=np.arange(2, 21, 2)):
     axs = None
     best_models = []
@@ -1261,7 +1366,7 @@ if __name__ == "__main__":
     n_trains = np.array([mtr.sum() for mtr in mtrains])
     n_tests = np.array([mte.sum() for mte in mtests])
 
-    D_latents = np.arange(2, 21, 2)
+    D_latents = np.arange(3, 4)
     # D_latents = np.arange(2, 21, 2)
     best_models = fit_all_models(D_latents)
     best_model = best_models[0]
@@ -1282,8 +1387,9 @@ if __name__ == "__main__":
 
     # Sort the states based on the correlation coefficient between their
     # 1D reconstruction of the data and the actual data
-    # dim_perm = order_latent_dims(xtrains, C, ytrains, mtrains)
-    dim_perm = np.array([5, 0, 7, 6, 4, 2, 9, 3, 8, 1])
+    dim_perm = order_latent_dims(xtrains, C, ytrains, mtrains)
+    # dim_perm = np.array([5, 0, 7, 6, 4, 2, 9, 3, 8, 1])
+    # dim_perm = np.array([0, 1, 2])
     C = np.hstack((C[:, :-1][:, dim_perm], C[:, -1:]))
     xtrains = [x[:, dim_perm] for x in xtrains]
     xtests = [x[:, dim_perm] for x in xtests]
@@ -1296,7 +1402,8 @@ if __name__ == "__main__":
     # plot_likelihoods(final_lls, hlls, best_index)
     #
     plot_best_model_results(best_model,
-                            do_plot_x_3d=False,
+                            do_plot_pca=False,
+                            do_plot_x_3d=True,
                             do_plot_x_2d=False,
                             do_plot_sigmasq=False,
                             do_plot_xcorr=False,
@@ -1307,29 +1414,30 @@ if __name__ == "__main__":
                             do_plot_data_wide=False,
                             do_plot_data_zoom=False,
                             do_plot_data_as_matrix=False,
+                            do_plot_cluster_types=False
                             )
 
-    heldout_neuron_identification_corr()
+    # heldout_neuron_identification_corr()
 
     # Save out the results
-    # results = dict(
-    #     xtrains=xtrains,
-    #     xtests=xtests,
-    #     ytrains=ytrains,
-    #     ytests=ytests,
-    #     mtrains=mtrains,
-    #     mtests=mtests,
-    #     z_true_trains=z_true_trains,
-    #     z_true_tests=z_true_tests,
-    #     z_key=z_true_key,
-    #     best_model=best_model,
-    #     D_latent=best_model.D_latent,
-    #     C=C,
-    #     perm=dim_perm,
-    #     N_clusters=N_clusters,
-    #     neuron_clusters=neuron_clusters,
-    #     neuron_perm=neuron_perm
-    # )
-    #
-    # with open(os.path.join(results_dir, "lds_data.pkl"), "wb") as f:
-    #     pickle.dump(results, f)
+    results = dict(
+        xtrains=xtrains,
+        xtests=xtests,
+        ytrains=ytrains,
+        ytests=ytests,
+        mtrains=mtrains,
+        mtests=mtests,
+        z_true_trains=z_true_trains,
+        z_true_tests=z_true_tests,
+        z_key=z_true_key,
+        best_model=best_model,
+        D_latent=best_model.D_latent,
+        C=C,
+        perm=dim_perm,
+        N_clusters=N_clusters,
+        neuron_clusters=neuron_clusters,
+        neuron_perm=neuron_perm
+    )
+
+    with open(os.path.join(results_dir, "lds_data.pkl"), "wb") as f:
+        pickle.dump(results, f)

@@ -89,6 +89,60 @@ class _HierarchicalARHMMMixin(object):
     # todo: implement generate function
 
 
+    def generate(self, T=100, keep=True, init_x=None, init_z=None, covariates=None, with_noise=True, group=None,
+                 tau=0, noise_scale=1):
+        from pybasicbayes.util.stats import sample_discrete, sample_gaussian
+        # Generate from the prior and raise exception if unstable
+        K, n = self.num_states, self.D
+
+        # Initialize discrete state sequence
+        zs = np.empty(T, dtype=np.int32)
+        if init_z is None:
+            zs[0] = sample_discrete(self.init_state_distn.pi_0.ravel())
+        else:
+            zs[0] = init_z
+
+        xs = np.empty((T, n), dtype='double')
+        if init_x is None:
+            xs[0] = np.random.randn(n)
+        else:
+            xs[0] = init_x
+
+        for t in range(1, T):
+            # Sample discrete state given previous continuous state
+            A = self.trans_distn.trans_matrix
+            zs[t] = sample_discrete(A[zs[t-1], :])
+
+            # Sample continuous state given current discrete state
+            mu = self.obs_distns[zs[t]].predict(xs[t - 1][None, :], group=group)[0]
+            sigma = self.obs_distns[zs[t]].sigmas[group] * noise_scale
+            J_dyn = np.linalg.inv(sigma)
+            h = J_dyn.dot(mu)
+
+            # Combine predicted mean with stability penalty from
+            #   p(1^T x | 0, \tau)
+            # where \tau = stable_prec. Thisintroduces potential of the form
+            #   exp( -\tau/2 (1^T x)^2 )
+            # = exp( -\tau/2 x^T 1 1^T x)
+            #
+            # In information form, this is N(x | J = \tau 11^T, h = 0)
+            J_pen = tau * np.eye(self.D)
+
+            if with_noise:
+                # xs[t] = self.obs_distns[zs[t]].rvs(xs[t-1][None, :], return_xy=False, group=group)
+                xs[t] = sample_gaussian(J=J_dyn+J_pen, h=h)
+            else:
+                xs[t] = np.linalg.solve(J_dyn + J_pen, h)
+
+            # assert np.all(abs(xs[t]) < 5), "RARHMM appears to be unstable!"
+
+        # TODO:
+        # if keep:
+        #     ...
+
+        return xs, zs
+
+
 class HierarchicalARHMM(_HierarchicalARHMMMixin, ARHMM):
     pass
 
@@ -102,8 +156,9 @@ class HierarchicalRecurrentARHMM(_HierarchicalARHMMMixin, _RecurrentARHMMMixin, 
     _trans_class = SoftmaxInputHMMTransitions
     _states_class = HierarchicalRecurrentARHMMStates
 
-    def generate(self, T=100, keep=True, init_x=None, init_z=None, covariates=None, with_noise=True, group=None):
-        from pybasicbayes.util.stats import sample_discrete
+    def generate(self, T=100, keep=True, init_x=None, init_z=None, covariates=None, with_noise=True, group=None,
+                 tau=0, noise_scale=1):
+        from pybasicbayes.util.stats import sample_discrete, sample_gaussian
         # Generate from the prior and raise exception if unstable
         K, n = self.num_states, self.D
 
@@ -126,18 +181,38 @@ class HierarchicalRecurrentARHMM(_HierarchicalARHMMMixin, _RecurrentARHMMMixin, 
             zs[t] = sample_discrete(A[zs[t-1], :])
 
             # Sample continuous state given current discrete state
-            if with_noise:
-                xs[t] = self.obs_distns[zs[t]].rvs(xs[t-1][None, :], return_xy=False, group=group)
-            else:
-                xs[t] = self.obs_distns[zs[t]].predict(xs[t - 1][None, :], group=group)
+            mu = self.obs_distns[zs[t]].predict(xs[t - 1][None, :], group=group)[0]
+            sigma = self.obs_distns[zs[t]].sigmas[group] * noise_scale
+            J_dyn = np.linalg.inv(sigma)
+            h = J_dyn.dot(mu)
 
-            assert np.all(np.isfinite(xs[t])), "RARHMM appears to be unstable!"
+            # Combine predicted mean with stability penalty from
+            #   p(1^T x | 0, \tau)
+            # where \tau = stable_prec. Thisintroduces potential of the form
+            #   exp( -\tau/2 (1^T x)^2 )
+            # = exp( -\tau/2 x^T 1 1^T x)
+            #
+            # In information form, this is N(x | J = \tau 11^T, h = 0)
+            J_pen = tau * np.eye(self.D)
+
+            if with_noise:
+                # xs[t] = self.obs_distns[zs[t]].rvs(xs[t-1][None, :], return_xy=False, group=group)
+                xs[t] = sample_gaussian(J=J_dyn+J_pen, h=h)
+            else:
+                xs[t] = np.linalg.solve(J_dyn + J_pen, h)
+
+            # assert np.all(abs(xs[t]) < 5), "RARHMM appears to be unstable!"
 
         # TODO:
         # if keep:
         #     ...
 
         return xs, zs
+
+
+class HierarchicalRecurrentARHMMWithNN(HierarchicalRecurrentARHMM):
+    from rslds.transitions import NNInputHMMTransitions
+    _trans_class = NNInputHMMTransitions
 
 
 class HierarchicalRecurrentARHMMSeparateTrans(_SeparateTransMixin, HierarchicalRecurrentARHMM):
