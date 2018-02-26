@@ -598,7 +598,7 @@ if __name__ == "__main__":
     D_latents = np.arange(2, 21, 2)
     fit_results = fit_all_models(D_latents)
     best_model = fit_results["hier"][0]
-
+    
     # Do an E step to smooth the latent states
     C = best_model.emission_distn.A
     xtrains = []
@@ -623,6 +623,9 @@ if __name__ == "__main__":
     # Cluster the neurons based on C
     neuron_perm, neuron_clusters = cluster_neruons(best_model)
 
+    # Perform neuron identification task
+    # heldout_neuron_identification_corr()
+    
     # Save out the results
     results = dict(
         xtrains=xtrains,
@@ -640,10 +643,11 @@ if __name__ == "__main__":
         perm=dim_perm,
         N_clusters=N_clusters,
         neuron_clusters=neuron_clusters,
-        neuron_perm=neuron_perm
+        neuron_perm=neuron_perm,
+        fit_results=fit_results
     )
 
     with open(os.path.join(results_dir, "lds_data.pkl"), "wb") as f:
         pickle.dump(results, f)
 
-    # heldout_neuron_identification_corr()
+    print("Finished.")
