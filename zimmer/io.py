@@ -5,6 +5,8 @@ import numpy as np
 from scipy.io import loadmat
 from scipy.interpolate import interp1d
 
+from pyhsmm.util.general import relabel_by_usage
+
 # Load the data
 kato_dir = os.path.join("data", "kato2015")
 kato_files = ["TS20140715e_lite-1_punc-31_NLS3_2eggs_56um_1mMTet_basal_1080s.mat",
@@ -275,6 +277,97 @@ def find_shared_neurons(worm_datas):
     print(shared_neurons)
 
     return shared_neurons
+
+
+def load_kato_data(include_unnamed=True, N_worms=5, signal="dff_diff"):
+    # Load the data
+    worm_datas = [WormData(i, name="worm{}".format(i), version="kato") for i in range(N_worms)]
+
+    # Get the "true" discrete states as labeled by Zimmer
+    z_trues = [wd.zimmer_states for wd in worm_datas]
+    z_trues, newlabels = relabel_by_usage(z_trues, return_mapping=True)
+
+    # Get the key
+    z_key = load_kato_key()
+    z_key = [z_key[i] for i in np.argsort(newlabels)]
+
+    # Get the names of the neurons
+    neuron_names = np.unique(np.concatenate([wd.neuron_names for wd in worm_datas]))
+    if not include_unnamed:
+        print("Only including named neurons.")
+        neuron_names = neuron_names[:61]
+    else:
+        print("Including all neurons, regardless of whether they were identified.")
+
+    N_neurons = neuron_names.size
+    print("{} neurons across all {} worms".format(N_neurons, N_worms))
+
+    # Construct a big dataset with all neurons for each worm
+    ys = []
+    masks = []
+    for wd in worm_datas:
+        y_indiv = getattr(wd, signal)
+        y = np.zeros((wd.T, N_neurons))
+        mask = np.zeros((wd.T, N_neurons), dtype=bool)
+        indices = wd.find_neuron_indices(neuron_names)
+        for n, index in enumerate(indices):
+            if index is not None:
+                y[:, n] = y_indiv[:, index]
+                mask[:, n] = True
+
+        ys.append(y)
+        masks.append(mask)
+
+    return ys, masks, z_trues, z_key, neuron_names
+
+
+def load_nichols_data(worms_and_conditions, worm_names, signal="dff_diff", include_unnamed=True):
+    # Load the data
+    worm_datas = [WormData(i,
+                           name=worm_names[j],
+                           version="nichols",
+                           condition=condition)
+                  for j, (i, condition) in enumerate(worms_and_conditions)]
+
+    # Get the "true" discrete states as labeled by Zimmer
+    z_trues = [wd.zimmer_states for wd in worm_datas]
+    z_trues, newlabels = relabel_by_usage(z_trues, return_mapping=True)
+
+    # Get the key
+    # z_key = load_kato_key()
+    z_key = worm_datas[0].zimmer_state_names
+    z_key = [z_key[i] for i in np.argsort(newlabels)]
+
+    # Get the names of the neurons
+    neuron_names = np.unique(np.concatenate([wd.neuron_names for wd in worm_datas]))
+    if not include_unnamed:
+        print("Only including named neurons.")
+        neuron_names = neuron_names[:73]
+    else:
+        print("Including all neurons, regardless of whether they were identified.")
+
+    N_neurons = neuron_names.size
+    print("{} neurons across all {} worms".format(N_neurons, len(worms_and_conditions)))
+
+    # Construct a big dataset with all neurons for each worm
+    ys = []
+    masks = []
+    us = []
+    for wd in worm_datas:
+        y_indiv = getattr(wd, signal)
+        y = np.zeros((wd.T, N_neurons))
+        mask = np.zeros((wd.T, N_neurons), dtype=bool)
+        indices = wd.find_neuron_indices(neuron_names)
+        for n, index in enumerate(indices):
+            if index is not None:
+                y[:, n] = y_indiv[:, index]
+                mask[:, n] = True
+
+        ys.append(y)
+        masks.append(mask)
+        us.append(wd.stimulus)
+
+    return ys, masks, us, z_trues, z_key, neuron_names
 
 
 if __name__ == "__main__":
