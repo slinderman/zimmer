@@ -49,7 +49,7 @@ from rslds.models import SoftmaxRecurrentARHMM
 from zimmer.models import HierarchicalARWeakLimitStickyHDPHMM, HierarchicalRecurrentARHMM, HierarchicalRecurrentARHMMWithNN
 from zimmer.dynamics import HierarchicalAutoRegression, HierarchicalRobustAutoRegression
 
-from zimmer.io import WormData, load_kato_key
+from zimmer.io import WormData, load_kato_key, load_kato_data
 
 # import importlib
 # import zimmer.plotting
@@ -105,49 +105,6 @@ def cached(results_name):
             return results
         return func_wrapper
     return _cache
-
-
-
-def load_data(include_unnamed=True):
-    # Load the data
-    worm_datas = [WormData(i, name="worm{}".format(i), version="kato") for i in range(N_worms)]
-
-    # Get the "true" discrete states as labeled by Zimmer
-    z_trues = [wd.zimmer_states for wd in worm_datas]
-    z_trues, newlabels = relabel_by_usage(z_trues, return_mapping=True)
-
-    # Get the key
-    z_key = load_kato_key()
-    z_key = [z_key[i] for i in np.argsort(newlabels)]
-
-    # Get the names of the neurons
-    neuron_names = np.unique(np.concatenate([wd.neuron_names for wd in worm_datas]))
-    if not include_unnamed:
-        print("Only including named neurons.")
-        neuron_names = neuron_names[:61]
-    else:
-        print("Including all neurons, regardless of whether they were identified.")
-
-    N_neurons = neuron_names.size
-    print("{} neurons across all {} worms".format(N_neurons, N_worms))
-
-    # Construct a big dataset with all neurons for each worm
-    ys = []
-    masks = []
-    for wd in worm_datas:
-        y_indiv = getattr(wd, signal)
-        y = np.zeros((wd.T, N_neurons))
-        mask = np.zeros((wd.T, N_neurons), dtype=bool)
-        indices = wd.find_neuron_indices(neuron_names)
-        for n, index in enumerate(indices):
-            if index is not None:
-                y[:, n] = y_indiv[:, index]
-                mask[:, n] = True
-
-        ys.append(y)
-        masks.append(mask)
-
-    return ys, masks, z_trues, z_key, neuron_names
 
 
 def compute_baseline_likelihood(xtrains, xtests, alpha=3.):
@@ -1588,7 +1545,7 @@ def hack_simulation_2(model, data, T=100, init_x=None, init_z=None, with_noise=T
 
 if __name__ == "__main__":
     # Load the continuous states found with the LDS
-    ys, ms, z_trues, z_true_key, neuron_names = load_data(include_unnamed=False)
+    ys, ms, z_trues, z_true_key, neuron_names = load_kato_data(include_unnamed=False)
     D_obs = ys[0].shape[1]
     with open(os.path.join(lds_dir, "lds_data.pkl"), "rb") as f:
         lds_results = pickle.load(f)
