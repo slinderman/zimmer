@@ -82,7 +82,7 @@ mov_dir = os.path.join(results_dir, "movies")
 
 # Fitting parameters
 N_lags = 1
-N_samples = 5000
+N_samples = 1000
 N_worms = 5
 
 
@@ -223,24 +223,26 @@ def fit_all_models(Ks=np.arange(4, 21, 2)):
 
     results = dict(baseline_hll=baseline_hll)
 
-    for index, (is_hierarchical, is_robust, is_recurrent) in \
-            enumerate(it.product(*([(False, True)] * 3))):
+    for index, (is_hierarchical, is_robust, is_recurrent, is_nn) in \
+            enumerate(it.product(*([(False, True)] * 4))):
 
         models = []
         llss = []
         hlls = []
         z_smplss = []
 
-        group_name = "{}\n{}\n{}".format(
-            "hierarchical" if is_hierarchical else "standard",
-            "robust" if is_robust else "standard",
-            "recurrent" if is_recurrent else "standard"
+        group_name = "{}_{}_{}_{}".format(
+            "hier" if is_hierarchical else "nohier",
+            "rob" if is_robust else "norob",
+            "rec" if is_recurrent else "norec",
+            "nn" if is_nn else "linear"
         )
         for K in Ks:
-            name = "{}_{}_{}_{}".format(
+            name = "{}_{}_{}_{}_{}".format(
                 "hier" if is_hierarchical else "nohier",
                 "rob" if is_robust else "norob",
                 "rec" if is_recurrent else "norec",
+                "nn" if is_nn else "linear",
                 K
             )
             print("Fitting model: {}".format(name))
@@ -249,7 +251,8 @@ def fit_all_models(Ks=np.arange(4, 21, 2)):
                 partial(_fit_model_wrapper,
                         is_hierarchical=is_hierarchical,
                         is_robust=is_robust,
-                        is_recurrent=is_recurrent))
+                        is_recurrent=is_recurrent,
+                        is_nn=is_nn))
             mod, lls, hll, z_smpls = fit(K)
 
             # Append results
