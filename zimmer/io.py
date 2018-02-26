@@ -78,6 +78,16 @@ def _load_kato(index, name, sample_rate):
                                else str(x[0, 1][0]),
                 neuron_ids)))
 
+        # Fix labels of SMB neurons per Manuel's instructions on Jan 16, 2018
+        mapping = dict(SMBDL="SMDDL", SMBDR="SMDDR", SMBVL="SMDDL", SMBVR="SMDDR")
+        def translate(ids):
+            for j, id in enumerate(ids):
+                if id in mapping:
+                    ids[j] = mapping[id]
+                    
+        translate(neuron_ids_1)
+        translate(neuron_ids_2)
+
         neuron_names = _get_neuron_names(neuron_ids_1, neuron_ids_2, name)
 
         # Get the calcium trace (corrected for bleaching)
