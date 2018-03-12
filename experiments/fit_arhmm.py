@@ -321,64 +321,6 @@ def fit_best_model_with_nn(K=8,
     best_model, lls, hll, z_smpls = fit()
     return best_model, lls, hll, z_smpls
 
-# def plot_likelihoods(group, Ks, hlls, best_index,
-#                      name,
-#                      baseline=None,
-#                      axs=None):
-#
-#     # Plot results of searching over models
-#     if axs is None:
-#         plt.figure(figsize=(6, 3))
-#         # ax1 = plt.subplot(211)
-#         # ax2 = plt.subplot(212)
-#         ax = plt.subplot(111)
-#     else:
-#         ax = axs
-#     cmap = gradient_cmap([np.ones(3), colors[4]])
-#
-#     M = len(Ks)
-#     T_te = T_tests[:N_worms].sum()
-#
-#     tolabel = [1, 2, 6, 10, 14, 20]
-#
-#     for m in range(M):
-#         label = "K={}".format(Ks[m]) \
-#             if group == 0 and Ks[m] in tolabel \
-#             else None
-#
-#         color = cmap((m+1) / M) if m > 0 else 0.5 * np.ones(3)
-#
-#         xx = group + m / (M+2)
-#         ax.bar(xx, hlls[m] / T_te,
-#                width=1. / (M + 2),
-#                color=color,
-#                edgecolor='k',
-#                label=label)
-#
-#     if group == 7:
-#         ax.plot(group + best_index / (M+2), 12.75, 'k*', markersize=4)
-#
-#     # ax.set_xlabel("Model", fontsize=6)
-#     ax.set_title("model selection", fontsize=8)
-#     ax.set_ylabel("test log likelihood\n(nats per time bin)", fontsize=6)
-#     ax.tick_params(labelsize=6)
-#     ax.set_ylim(9, 13)
-#
-#     # update xticks
-#     xticks = ax.get_xticks()
-#     if group > 0:
-#         xticklabels = list(ax.get_xticklabels())
-#         xticklabels.append(name)
-#     else:
-#         xticklabels = [name]
-#
-#     ax.set_xticks(np.arange(group + 1) + 0.5)
-#     ax.set_xticklabels(xticklabels)
-#
-#     return ax
-
-
-
 
 def simulate_trajectories(model, N_trajs=100, T_sim=30, N_sims=4, group=4, min_sim_dur=6):
     from pyhsmm.util.general import rle
@@ -438,7 +380,7 @@ def simulate_trajectories(model, N_trajs=100, T_sim=30, N_sims=4, group=4, min_s
 
     return x_trajss, x_simss
 
-#
+
 # def plot_best_model_results(do_plot_expected_states=True,
 #                             do_plot_x_2d=True,
 #                             do_plot_x_3d=True,

@@ -597,7 +597,7 @@ if __name__ == "__main__":
 
     D_latents = np.arange(2, 21, 2)
     fit_results = fit_all_models(D_latents)
-    best_model = fit_results["hier"][0]
+    best_model = fit_results["hier"][2][np.where(D_latents == 8)[0]]
     
     # Do an E step to smooth the latent states
     C = best_model.emission_distn.A

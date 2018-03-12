@@ -81,14 +81,14 @@ def _load_kato(index, name, sample_rate):
                 neuron_ids)))
 
         # Fix labels of SMB neurons per Manuel's instructions on Jan 16, 2018
-        mapping = dict(SMBDL="SMDDL", SMBDR="SMDDR", SMBVL="SMDDL", SMBVR="SMDDR")
-        def translate(ids):
-            for j, id in enumerate(ids):
-                if id in mapping:
-                    ids[j] = mapping[id]
-                    
-        translate(neuron_ids_1)
-        translate(neuron_ids_2)
+        # mapping = dict(SMBDL="SMDDL", SMBDR="SMDDR", SMBVL="SMDDL", SMBVR="SMDDR")
+        # def translate(ids):
+        #     for j, id in enumerate(ids):
+        #         if id in mapping:
+        #             ids[j] = mapping[id]
+        #
+        # translate(neuron_ids_1)
+        # translate(neuron_ids_2)
 
         neuron_names = _get_neuron_names(neuron_ids_1, neuron_ids_2, name)
 
@@ -295,7 +295,7 @@ def load_kato_data(include_unnamed=True, N_worms=5, signal="dff_diff"):
     neuron_names = np.unique(np.concatenate([wd.neuron_names for wd in worm_datas]))
     if not include_unnamed:
         print("Only including named neurons.")
-        neuron_names = neuron_names[:59]
+        neuron_names = neuron_names[:61]
     else:
         print("Including all neurons, regardless of whether they were identified.")
 

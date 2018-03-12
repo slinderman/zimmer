@@ -45,10 +45,10 @@ SIADL,0,0,0,0,1,0,,
 SIBDR,0,0,0,0,1,0,,
 SIBVL,0,0,0,0,1,0,,
 SIBVR,0,0,0,0,1,0,,
-SMBDL,0,0,0,0,1,0,,"In the Cell paper, these neurons are named SMBD, but in Nichols 2017, they are labelled as SMDDL/R"
-SMBDR,0,0,0,0,1,0,,"In the Cell paper, these neurons are named SMBD, but in Nichols 2017, they are labelled as SMDDL/R"
-SMBVL,0,0,0,0,1,0,,"In the Cell paper, these neurons are named SMBD, but in Nichols 2017, they are labelled as SMDDL/R"
-SMBVR,0,0,0,0,1,0,,"In the Cell paper, these neurons are named SMBD, but in Nichols 2017, they are labelled as SMDDL/R"
+SMBDL,0,0,1,0,0,0,,"In the Cell paper, these neurons are named SMBD, but in Nichols 2017, they are labelled as SMDDL/R"
+SMBDR,0,0,1,0,0,0,,"In the Cell paper, these neurons are named SMBD, but in Nichols 2017, they are labelled as SMDDL/R"
+SMBVL,0,0,1,0,0,0,,"In the Cell paper, these neurons are named SMBD, but in Nichols 2017, they are labelled as SMDDL/R"
+SMBVR,0,0,1,0,0,0,,"In the Cell paper, these neurons are named SMBD, but in Nichols 2017, they are labelled as SMDDL/R"
 SMDVL,0,0,0,1,0,0,Kato 2015,
 SMDVR,0,0,0,1,0,0,Kato 2015,
 URADL,0,0,0,0,1,0,,
