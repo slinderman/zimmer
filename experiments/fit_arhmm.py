@@ -247,6 +247,13 @@ def fit_all_models(Ks=np.arange(4, 21, 2)):
             )
             print("Fitting model: {}".format(name))
 
+            if is_nn and K == 1:
+                models.append(None)
+                llss.append(np.array([-np.inf]))
+                hlls.append(np.array([-np.inf]))
+                z_smplss.append(None)
+                continue
+            
             fit = cached(name)(
                 partial(_fit_model_wrapper,
                         is_hierarchical=is_hierarchical,
@@ -1550,7 +1557,7 @@ if __name__ == "__main__":
 
     # Fit the best model with neural net decision boundaries
     best_model, lls, hll, z_smpls = \
-        fit_best_model_with_nn(K=8,
+        fit_best_model_with_nn(K=6,
                                is_hierarchical=True,
                                is_recurrent=True,
                                is_robust=True,
