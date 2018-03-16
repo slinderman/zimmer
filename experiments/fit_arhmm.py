@@ -10,35 +10,6 @@ from scipy.ndimage import gaussian_filter1d
 
 from tqdm import tqdm
 
-# Plotting stuff
-# import matplotlib.pyplot as plt
-# from hips.plotting.colormaps import gradient_cmap
-# import seaborn as sns
-# sns.set_style("white")
-# sns.set_context("paper")
-# color_names = ["windows blue",
-#                "red",
-#                "amber",
-#                "faded green",
-#                "dusty purple",
-#                "orange",
-#                "clay",
-#                "pink",
-#                "greyish",
-#                "mint",
-#                "light cyan",
-#                "steel blue",
-#                "forest green",
-#                "pastel purple",
-#                "salmon",
-#                "dark brown"]
-# colors = sns.xkcd_palette(color_names)
-# cmap = gradient_cmap(colors)
-#
-# from matplotlib.cm import get_cmap
-# cm = get_cmap("cubehelix")
-# zimmer_colors = [cm(i) for i in np.linspace(0.05, 0.95, 8)]
-
 # Modeling stuff
 from pyhsmm.util.general import relabel_by_usage, relabel_by_permutation
 
@@ -51,29 +22,13 @@ from zimmer.dynamics import HierarchicalAutoRegression, HierarchicalRobustAutoRe
 
 from zimmer.io import WormData, load_kato_key, load_kato_data
 
-# import importlib
-# import zimmer.plotting
-# importlib.reload(zimmer.plotting)
-# from zimmer.plotting import plot_3d_continuous_states, plot_2d_continuous_states, plot_expected_states, \
-#     plot_3d_dynamics, plot_2d_dynamics, plot_state_overlap, plot_state_usage_by_worm, plot_all_transition_matrices, \
-#     plot_simulated_trajectories, make_state_predictions_3d_movie, plot_simulated_trajectories2, plot_simulated_trajectories4,\
-#     plot_recurrent_transitions, plot_x_at_changepoints, plot_latent_trajectories_vs_time, \
-#     plot_state_usage_by_worm_matrix, plot_duration_histogram, plot_duration_cdfs, plot_simulated_cluster_activation, \
-#     make_states_3d_movie, make_states_dynamics_movie, plot_changepoint_prs
-
 # LDS Results
-# lds_dir = os.path.join("results", "2018-01-17-hlds", "run001_D10")
-# lds_dir = os.path.join("results", "2017-11-03-hlds", "run003")
-lds_dir = os.path.join("results", "kato", "2018-02-26-hlds", "run001")
+lds_dir = os.path.join("results", "kato", "2018-03-16-hlds", "run001")
 signal = "dff_diff"
-# lds_dir = os.path.join("results", "2017-11-03-hlds", "run003_dff_bc")
 assert os.path.exists(lds_dir)
 
 # AR-HMM RESULTS
-# results_dir = os.path.join("results", "2018-01-19-arhmm", "run001")
-# results_dir = os.path.join("results", "2017-11-04-arhmm", "run004")
-# results_dir = os.path.join("results", "2017-11-04-arhmm", "run004_dff_bc")
-results_dir = os.path.join("results", "kato", "2018-02-26-arhmm", "run001")
+results_dir = os.path.join("results", "kato", "2018-03-16-arhmm", "run001")
 
 assert os.path.exists(results_dir)
 fig_dir = os.path.join(results_dir, "figures")
@@ -247,7 +202,9 @@ def fit_all_models(Ks=np.arange(4, 21, 2)):
             )
             print("Fitting model: {}".format(name))
 
-            if is_nn and K == 1:
+            if (is_nn and K == 1) or \
+               (is_nn and not is_recurrent) or \
+               (is_nn and not is_hierarchical):
                 models.append(None)
                 llss.append(np.array([-np.inf]))
                 hlls.append(np.array([-np.inf]))
@@ -267,6 +224,8 @@ def fit_all_models(Ks=np.arange(4, 21, 2)):
             llss.append(lls)
             hlls.append(hll)
             z_smplss.append(z_smpls)
+
+            print("test ll: ", hll / T_tests[:N_worms].sum())
 
         final_lls = np.array([lls[-1] for lls in llss])
         hlls = np.array(hlls)
@@ -1497,7 +1456,7 @@ def hack_simulation_2(model, data, T=100, init_x=None, init_z=None, with_noise=T
 
 if __name__ == "__main__":
     # Load the continuous states found with the LDS
-    ys, ms, z_trues, z_true_key, neuron_names = load_kato_data(include_unnamed=False)
+    ys, ms, z_trues, z_true_key, neuron_names = load_kato_data(include_unnamed=True)
     D_obs = ys[0].shape[1]
     with open(os.path.join(lds_dir, "lds_data.pkl"), "rb") as f:
         lds_results = pickle.load(f)
@@ -1521,12 +1480,12 @@ if __name__ == "__main__":
     d = lds_results['best_model'].D[:, 0]
     ys_preds = [x.dot(C.T) + d for x in xs]
 
-    N_clusters = lds_results['N_clusters']
-    neuron_clusters = lds_results['neuron_clusters']
-    neuron_perm = lds_results['neuron_perm']
-    C_norm = C / np.linalg.norm(C, axis=1)[:, None]
-    C_clusters = np.array([C[neuron_clusters == c].mean(0) for c in range(N_clusters)])
-    d_clusters = np.array([d[neuron_clusters == c].mean(0) for c in range(N_clusters)])
+    # N_clusters = lds_results['N_clusters']
+    # neuron_clusters = lds_results['neuron_clusters']
+    # neuron_perm = lds_results['neuron_perm']
+    # C_norm = C / np.linalg.norm(C, axis=1)[:, None]
+    # C_clusters = np.array([C[neuron_clusters == c].mean(0) for c in range(N_clusters)])
+    # d_clusters = np.array([d[neuron_clusters == c].mean(0) for c in range(N_clusters)])
 
     # Set the AR-HMM hyperparameters
     ar_params = dict(nu_0=D_latent + 2,
@@ -1557,7 +1516,7 @@ if __name__ == "__main__":
 
     # Fit the best model with neural net decision boundaries
     best_model, lls, hll, z_smpls = \
-        fit_best_model_with_nn(K=6,
+        fit_best_model_with_nn(K=8,
                                is_hierarchical=True,
                                is_recurrent=True,
                                is_robust=True,

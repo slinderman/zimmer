@@ -26,7 +26,7 @@ from pylds.models import MissingDataLDS
 # signal = "dff_deriv"
 
 run_num = 1
-results_dir = os.path.join("results", "kato", "2018-02-26-hlds", "run{:03d}".format(run_num))
+results_dir = os.path.join("results", "kato", "2018-03-16-hlds", "run{:03d}".format(run_num))
 signal = "dff_diff"
 
 assert os.path.exists(results_dir)
@@ -67,7 +67,8 @@ def _fit_lds(D_latent, D_in=1, alpha_0=1.0, beta_0=1.0,
              is_hierarchical=True,
              datas=None,
              masks=None,
-             compute_hll=True):
+             compute_hll=True,
+             orthogonalize=True):
 
     print("Fitting LDS with {} latent dimensions".format(D_latent))
     # model = make_hlds(D_latent=D_latent, D_obs=D_obs, D_in=1)
@@ -76,7 +77,7 @@ def _fit_lds(D_latent, D_in=1, alpha_0=1.0, beta_0=1.0,
     dynamics_distn = \
         Regression(
             A=np.hstack((0.99 * np.eye(D_latent), np.zeros((D_latent, D_in)))),
-            sigma=0.1 * np.eye(D_latent))
+            sigma=.1 * np.eye(D_latent))
 
     if is_hierarchical:
         emission_distn = \
@@ -93,6 +94,9 @@ def _fit_lds(D_latent, D_in=1, alpha_0=1.0, beta_0=1.0,
 
         model = MissingDataLDS(dynamics_distn, emission_distn)
 
+    # Set the initial covariance to be large
+    model.sigma_init = np.eye(D_latent)
+        
     datas = ytrains if datas is None else datas
     masks = mtrains if masks is None else masks
     for i in range(len(datas)):
@@ -107,6 +111,28 @@ def _fit_lds(D_latent, D_in=1, alpha_0=1.0, beta_0=1.0,
         model.resample_states()
         model.resample_emission_distn()
         lls.append(model.log_likelihood())
+
+        if orthogonalize:
+            U, S, VT = np.linalg.svd(model.C, full_matrices=False)
+            # R = np.diag(S).dot(VT)
+            # Ri = VT.T.dot(np.diag(1/S))
+            R = VT
+            Ri = VT.T
+            assert np.allclose(R.dot(Ri), np.eye(model.D_latent))
+
+            # Transform the latent states by xt -> Rxt
+            for states in model.states_list:
+                states.gaussian_states = states.gaussian_states.dot(R.T)
+
+            # Transform parameters accordingly
+            # model.A = R.dot(model.A).dot(Ri) # <- should stay orthonormal
+            # model.B = R.dot(model.B) # <- 0 anyway
+            model.C = model.C.dot(Ri)
+
+            # To keep the likelihood the same, we should also reset the
+            # dynamics noise covariance.  For our purposes, we will skip
+            # this step since we want the noise to be held small and constant.
+            # model.sigma_states = R.dot(model.sigma_states).dot(R.T)
 
     # Evaluate heldout likelihood for this model
     hll = 0
@@ -179,13 +205,17 @@ def order_latent_dims(xtrains, C, ytrains, mtrains):
     return perm
 
 
-def cluster_neruons(best_model, seed=0):
+def cluster_neurons(best_model, seed=0, max_neurons=59):
     from pyhsmm.util.general import relabel_by_permutation
     from sklearn.cluster import KMeans
     # C_true = best_model.emission_distn.A[:, :-1].copy()
     # C_true /= np.linalg.norm(C_true, axis=1)[:, None]
     C_norm = C[:,:-1].copy()
     C_norm /= np.linalg.norm(C_norm, axis=1)[:, None]
+
+    # Only keep the labeled neurons
+    max_neurons = max_neurons if max_neurons is not None else D_obs
+    C_norm = C_norm[:max_neurons]
 
     np.random.seed(seed)
     cluster = KMeans(n_clusters=N_clusters)
@@ -211,8 +241,11 @@ def cluster_neruons(best_model, seed=0):
 
     # Lex sort by label then by emission vector
     # perm = np.lexsort(np.row_stack((C_true.T, labels)))
-    neuron_perm = np.lexsort((neuron_names[:D_obs], neuron_clusters))
+    neuron_perm = np.lexsort((neuron_names[:max_neurons], neuron_clusters))
 
+    # Add back in the other neurons
+    neuron_perm = np.concatenate((neuron_perm, np.arange(max_neurons, D_obs)))
+    
     return neuron_perm, neuron_clusters
 
 
@@ -585,7 +618,7 @@ def heldout_neuron_identification_corr(N_heldout=10, D_latent=10, is_hierarchica
 
 
 if __name__ == "__main__":
-    ys, ms, z_trues, z_true_key, neuron_names = load_kato_data(include_unnamed=False)
+    ys, ms, z_trues, z_true_key, neuron_names = load_kato_data(include_unnamed=True)
     D_obs = ys[0].shape[1]
 
     # Split test train
@@ -597,7 +630,7 @@ if __name__ == "__main__":
 
     D_latents = np.arange(2, 21, 2)
     fit_results = fit_all_models(D_latents)
-    best_model = fit_results["hier"][2][np.where(D_latents == 8)[0]]
+    best_model = fit_results["hier"][2][np.where(D_latents == 10)[0][0]]
     
     # Do an E step to smooth the latent states
     C = best_model.emission_distn.A
@@ -613,15 +646,18 @@ if __name__ == "__main__":
         s.E_step()
         xtests.append(s.smoothed_mus)
 
-    # Sort the states based on the correlation coefficient between their
-    # 1D reconstruction of the data and the actual data
-    dim_perm = order_latent_dims(xtrains, C, ytrains, mtrains)
+    # The columns of C are sorted in order of descending
+    # singular value, which should approximately be the
+    # order from most explained variance to least.  In practice,
+    # it seems the latter dimensions are actually a bit more
+    # interpretable, but so be it. 
+    dim_perm = np.arange(best_model.D_latent)
     C = np.hstack((C[:, :-1][:, dim_perm], C[:, -1:]))
     xtrains = [x[:, dim_perm] for x in xtrains]
     xtests = [x[:, dim_perm] for x in xtests]
-
+    
     # Cluster the neurons based on C
-    neuron_perm, neuron_clusters = cluster_neruons(best_model)
+    neuron_perm, neuron_clusters = cluster_neurons(best_model)
 
     # Perform neuron identification task
     # heldout_neuron_identification_corr()
