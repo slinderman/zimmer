@@ -622,10 +622,10 @@ def simulate_trajectories(model, N_trajs=100, T_sim=30, N_sims=4, group=4, min_s
 #         # plot_x_at_changepoints(z_finals, xs,
 #         #                        results_dir=fig_dir)
 #
-#         plot_x_at_changepoints(z_trues, xs,
-#                                colors=zimmer_colors,
-#                                basename="x_cp_zimmer",
-#                                results_dir=fig_dir)
+        plot_x_at_changepoints(z_trues, xs,
+                               colors=zimmer_colors,
+                               basename="x_cp_zimmer",
+                               results_dir=fig_dir)
 #
 #     if do_plot_latent_trajectories_vs_time:
 #         plot_slice = (9 * 60 * 3, 12 * 60 * 3)
