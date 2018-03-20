@@ -25,7 +25,7 @@ from pylds.models import MissingDataLDS
 # results_dir = os.path.join("results", "2018-01-17-hlds", "run{:03d}".format(run_num))
 # signal = "dff_deriv"
 
-run_num = 1
+run_num = 2
 results_dir = os.path.join("results", "kato", "2018-03-16-hlds", "run{:03d}".format(run_num))
 signal = "dff_diff"
 
@@ -624,13 +624,14 @@ if __name__ == "__main__":
     # Split test train
     ytrains, ytests, train_inds = list(zip(*[_split_test_train(y, train_frac=0.8) for y in ys]))
     mtrains, mtests, _ = list(zip(*[_split_test_train(m, train=train) for m, train in zip(ms, train_inds)]))
-    z_true_trains, z_true_tests, _ = list(zip(*[_split_test_train(z, train=train) for z, train in zip(z_trues, train_inds)]))
+    z_true_trains, z_true_tests, _ = list(zip(*[_split_test_train(z, train=train) for z,  train in zip(z_trues, train_inds)]))
     n_trains = np.array([mtr.sum() for mtr in mtrains])
     n_tests = np.array([mte.sum() for mte in mtests])
 
     D_latents = np.arange(2, 21, 2)
     fit_results = fit_all_models(D_latents)
-    best_model = fit_results["hier"][2][np.where(D_latents == 10)[0][0]]
+    #best_model = fit_results["hier"][2][np.where(D_latents == 10)[0][0]]
+    best_model = fit_results["hier"][0]
     
     # Do an E step to smooth the latent states
     C = best_model.emission_distn.A

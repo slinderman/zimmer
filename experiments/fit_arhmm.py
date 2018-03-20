@@ -285,6 +285,7 @@ def fit_best_model_with_nn(K=8,
                 ))
 
     best_model, lls, hll, z_smpls = fit()
+    print("best model test ll: ", hll / np.sum([xte.shape[0] for xte in xtests]))
     return best_model, lls, hll, z_smpls
 
 
@@ -1501,7 +1502,7 @@ if __name__ == "__main__":
                           Sigma_0=np.eye(ar_params['M_0'].size),
                           nu_0=ar_params['nu_0'],
                           Q_0=ar_params['S_0'],
-                          etasq=0.01,
+                          etasq=1.0,
                           affine=True)
 
     Ks = np.concatenate(([1], np.arange(2, 21, 2)))
