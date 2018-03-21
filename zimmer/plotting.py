@@ -1873,7 +1873,6 @@ def plot_x_at_changepoints(zs, xs, window=9, colors=None,
     K = zs.max() + 1
 
     cps = np.where(np.diff(zs) != 0)[0]
-    z_pres = zs[cps]
     z_posts = zs[cps+1]
 
     tt = np.arange(-window, window+1) / 3.0
@@ -1903,19 +1902,18 @@ def plot_x_at_changepoints(zs, xs, window=9, colors=None,
         # spc = 2
         for d in range(D):
             ax.fill_between(tt,
-                            d * spc + X_mean[:,d]-X_std[:,d],
-                            d * spc + X_mean[:,d]+X_std[:,d],
+                            -d * spc + X_mean[:,d]-X_std[:,d],
+                            -d * spc + X_mean[:,d]+X_std[:,d],
                             color=colors[k],
                             alpha=0.25
                             )
 
-            ax.plot(tt, d * spc + X_mean[:,d], color=colors[k], lw=2)
-            ax.plot([tt[0], tt[-1]], [d * spc, d*spc], ':k', lw=.5)
+            ax.plot(tt, -d * spc + X_mean[:,d], color=colors[k], lw=2)
+            ax.plot([tt[0], tt[-1]], [-d * spc, -d*spc], ':k', lw=.5)
 
         yl = ax.get_ylim()
         ax.plot([0, 0], yl, ':k', lw=0.5)
-        ax.set_ylim(reversed(yl))
-        ax.set_yticks(np.arange(D) * spc)
+        ax.set_yticks(-np.arange(D) * spc)
         ax.set_yticklabels(np.arange(D) + 1)
         ax.set_ylabel("latent dimension")
         ax.set_xlim(tt[0], tt[-1])
