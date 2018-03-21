@@ -425,7 +425,8 @@ def plot_3d_dynamics(dynamics_distns, z, x,
                      simss=None,
                      colors=None,
                      lim=None,
-                     filepath=None):
+                     filepath=None,
+                     scale=2.5):
     colors = default_colors if colors is None else colors
     for k in range(len(dynamics_distns)):
         fig = plt.figure(figsize=(1.5, 1.5))
@@ -435,7 +436,8 @@ def plot_3d_dynamics(dynamics_distns, z, x,
         plot_vector_field_3d(k, z, x, dynamics_distns, colors,
                              N_plot=50,
                              ax=ax,
-                             lims=(-lim, lim), )
+                             lims=(-lim, lim),
+                             scale=scale)
 
         if simss is not None:
             assert isinstance(simss, list) and len(simss) == len(dynamics_distns)
