@@ -7,6 +7,8 @@ from zimmer.states import HierarchicalFactorAnalysisStates, HierarchicalSLDSStat
     HierarchicalRecurrentSLDSStates, HierarchicalLDSStates, HierarchicalARHMMStates, \
     HierarchicalRecurrentARHMMStates, HierarchicalRecurrentARHMMSeparateTransStates
 from pybasicbayes.models.factor_analysis import FactorAnalysis
+from pybasicbayes.distributions import Regression
+from pybasicbayes.util.general import AR_striding
 from pyhsmm.models import _HMMGibbsSampling, _SeparateTransMixin
 from pylds.models import MissingDataLDS
 from autoregressive.models import ARWeakLimitStickyHDPHMM, ARHMM
@@ -74,6 +76,77 @@ class HierarchicalLDS(MissingDataLDS):
         mask = [s.mask for s in self.states_list]
         groups = [s.group for s in self.states_list]
         self.emission_distn.resample(data=xys, mask=mask, groups=groups)
+
+
+class HierarchicalLDSWithLocalAR(HierarchicalLDS):
+    """
+    A linear dynamical system with the extra feature that observations
+    for each neuron are conditioned on that neuron's preceding values.
+
+    y_{tn} = \sum_{p=1}^P a_n^{(p)} y_{t-p, n} + c_n^T x_t + d_n + noise
+    """
+    def __init__(self, dynamics_distn, emission_distn, nlags=1):
+        super(HierarchicalLDSWithLocalAR, self).__init__(dynamics_distn, emission_distn)
+        self.nlags = nlags
+
+        # Initialize autoregressions for each output dimension
+        A0 = np.zeros((1,nlags))
+        A0[0,-1] = 1
+        self.autoregressions = [
+            Regression(nu_0=2,
+                       S_0=np.eye(1),
+                       M_0=np.zeros((1, nlags)),
+                       K_0=np.eye(nlags),
+                       A=A0,
+                       sigma=np.eye(1))
+            for _ in range(self.D_obs)
+        ]
+
+    def add_data(self, data, inputs=None, **kwargs):
+        # First preprocess the data with an AR model
+        yhats = []
+        for n in range(self.D_obs):
+            yn_lag = np.concatenate((np.repeat(data[0,n], self.nlags), data[:,n]))
+            yn_lag = AR_striding(yn_lag[:, None], self.nlags)
+            yhats.append(self.autoregressions[n].predict(yn_lag[:,:-1]))
+        yhats = np.hstack(yhats)
+
+        assert yhats.shape == data.shape
+        residual = data - yhats
+
+        super(HierarchicalLDSWithLocalAR, self).add_data(residual, inputs=inputs, **kwargs)
+        self.states_list[-1].raw_data = data
+
+    def _resample_autoregressions(self):
+        nlags = self.nlags
+        for n, ar in enumerate(self.autoregressions):
+            # Subtract off the LDS component then refit the autoregression
+            xs = []
+            ys = []
+            for s in self.states_list:
+                if s.mask[0,n]:
+                    xs.append(AR_striding(s.raw_data[:,n:n+1], nlags)[:,:-1])
+                    ys.append((s.raw_data[:,n]
+                               - s.gaussian_states.dot(self.C[n])
+                               - s.inputs.dot(self.D[n]))[nlags:, None])
+
+            # Fit the regression with these (x,y) pairs
+            ar.max_likelihood(list(zip(xs, ys)))
+
+            # Subtract off the autoregression part and reset the residuals
+            for s in self.states_list:
+                if s.mask[0, n]:
+                    x = AR_striding(
+                        np.concatenate((
+                            np.repeat(s.raw_data[0, n], nlags),
+                            s.raw_data[:,n])),
+                        nlags)[:,:-1]
+                    ypred = ar.predict(x)
+                    s.data[:, n:n+1] = s.raw_data[:, n:n+1] - ypred
+
+    def resample_emission_distn(self):
+        super(HierarchicalLDSWithLocalAR, self).resample_emission_distn()
+        self._resample_autoregressions()
 
 
 class _HierarchicalARHMMMixin(object):

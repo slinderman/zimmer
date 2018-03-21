@@ -9,25 +9,16 @@ from functools import partial
 
 # Load worm modeling specific stuff
 from zimmer.io import load_kato_data
-from zimmer.models import HierarchicalLDS
+from zimmer.models import HierarchicalLDS, HierarchicalLDSWithLocalAR
 from zimmer.emissions import HierarchicalDiagonalRegression
 
 
 from pybasicbayes.distributions import Regression, DiagonalRegression
 from pylds.models import MissingDataLDS
 
-# IO
-# run_num = 3
-# results_dir = os.path.join("results", "2017-11-03-hlds", "run{:03d}".format(run_num))
-# signal = "dff_diff"
 
-# run_num = 1
-# results_dir = os.path.join("results", "2018-01-17-hlds", "run{:03d}".format(run_num))
-# signal = "dff_deriv"
-
-run_num = 2
-results_dir = os.path.join("results", "kato", "2018-03-16-hlds", "run{:03d}".format(run_num))
-signal = "dff_diff"
+run_num = 1
+results_dir = os.path.join("results", "kato", "2018-03-20-hlds", "run{:03d}".format(run_num))
 
 assert os.path.exists(results_dir)
 fig_dir = os.path.join(results_dir, "figures")
@@ -85,7 +76,8 @@ def _fit_lds(D_latent, D_in=1, alpha_0=1.0, beta_0=1.0,
                 D_obs, D_latent + D_in, N_groups=N_worms,
                 alpha_0=alpha_0, beta_0=beta_0)
 
-        model = HierarchicalLDS(dynamics_distn, emission_distn)
+        # model = HierarchicalLDS(dynamics_distn, emission_distn)
+        model = HierarchicalLDSWithLocalAR(dynamics_distn, emission_distn, nlags=2)
     else:
         emission_distn = \
             DiagonalRegression(
@@ -111,6 +103,7 @@ def _fit_lds(D_latent, D_in=1, alpha_0=1.0, beta_0=1.0,
         model.resample_states()
         model.resample_emission_distn()
         lls.append(model.log_likelihood())
+        print("ll: ", lls[-1])
 
         if orthogonalize:
             U, S, VT = np.linalg.svd(model.C, full_matrices=False)
@@ -618,7 +611,7 @@ def heldout_neuron_identification_corr(N_heldout=10, D_latent=10, is_hierarchica
 
 
 if __name__ == "__main__":
-    ys, ms, z_trues, z_true_key, neuron_names = load_kato_data(include_unnamed=True)
+    ys, ms, z_trues, z_true_key, neuron_names = load_kato_data(include_unnamed=True, signal="dff_bc_zscored")
     D_obs = ys[0].shape[1]
 
     # Split test train
