@@ -98,11 +98,16 @@ def plot_1d_continuous_states(x_inf, z_inf, z_zimmer, colors,
 
     plt.savefig(os.path.join(results_dir, filename))
 
-def plot_2d_continuous_states(x, z, colors,
+def plot_2d_continuous_states(x, z, 
+                              colors=None,
                               ax=None,
                               inds=(0,1),
+                              xlims=None,
+                              ylims=None,
                               figsize=(2.5, 2.5),
                               results_dir=".", filename=None,):
+
+    colors = default_colors if colors is None else colors
 
     if ax is None:
         fig = plt.figure(figsize=figsize)
@@ -115,6 +120,13 @@ def plot_2d_continuous_states(x, z, colors,
         ax.plot(x[cp_start:cp_stop + 1, inds[0]],
                 x[cp_start:cp_stop + 1, inds[1]],
                  '-', color=colors[z[cp_start]])
+
+    if xlims is not None:
+        ax.set_xlim(xlims)
+
+    if ylims is not None:
+      ax.set_ylim(ylims)
+
 
     if filename is not None:
         plt.savefig(os.path.join(results_dir, filename))
@@ -2216,4 +2228,66 @@ def make_state_predictions_3d_movie(
     with writer.saving(fig, filepath, 150):
         for i in tqdm(range(T)):
             update_frame(i)
+            writer.grab_frame()
+
+
+def make_latent_states_movie(x, z, filename, fps=60):
+    # istart = slc[0] * 60 * 3
+    # istop = slc[1] * 60 * 3
+    # x = x[istart:istop]
+
+    T = x.shape[0]
+    lim = 2.5
+
+
+    fig = plt.figure(figsize=(4, 4))
+    ax = fig.add_subplot(111, projection="3d")
+
+    point = ax.plot([x[0,0]], [x[0, 1]], [x[0,2]], 'ko', markersize=3)[0]
+    point.set_zorder(1000)
+    paths = [x[:1]]
+    path_handles = [ax.plot([x[0,0]], [x[0, 1]], [x[0,2]], '-', color=default_colors[z[0]])[0]]
+
+    ax.set_xlabel("dim 1", labelpad=-18, fontsize=6)
+    ax.set_ylabel("dim 2", labelpad=-18, fontsize=6)
+    ax.set_zlabel("dim 3", labelpad=-18, fontsize=6)
+    ax.set_xticklabels([])
+    ax.set_yticklabels([])
+    ax.set_zticklabels([])
+    if lim is not None:
+        ax.set_xlim(-lim, lim)
+        ax.set_ylim(-lim, lim)
+        ax.set_zlim(-lim, lim)
+
+    plt.tight_layout(pad=0.1)
+
+    def _draw(t):
+        assert t > 0
+
+        # Update point
+        point.set_data(x[t:t+1, 0], x[t:t+1, 1])
+        point.set_3d_properties(x[t:t+1, 2])
+
+        # Update paths
+        if z[t] == z[t-1]:
+            paths[-1] = np.row_stack((paths[-1], x[t:t+1]))
+            path_handles[-1].set_data(paths[-1][:,0], paths[-1][:, 1])
+            path_handles[-1].set_3d_properties(paths[-1][:, 2])
+        else:
+            paths.append(x[t-1:t+1])
+            path_handles.append(ax.plot(paths[-1][:, 0],
+                                        paths[-1][:, 1],
+                                        paths[-1][:, 2],
+                                        '-',
+                                        color=default_colors[z[t]])[0])
+
+    from tqdm import tqdm
+    import matplotlib.animation as manimation
+    FFMpegWriter = manimation.writers['ffmpeg']
+    metadata = dict(title='probability vs space')
+    writer = FFMpegWriter(fps=fps, bitrate=1024, metadata=metadata)
+    with writer.saving(fig, filename, 300):
+        # for t in tqdm(range(x.shape[0])):
+        for t in tqdm(range(1, T)):
+            _draw(t)
             writer.grab_frame()
