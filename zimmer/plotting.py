@@ -858,7 +858,6 @@ def plot_state_overlap(z_finals, z_trues,
         plt.colorbar(im, cax=axcb)
         axcb.tick_params(labelsize=6)
 
-
         if results_dir is not None:
             plt.savefig(os.path.join(results_dir, filename))
 
