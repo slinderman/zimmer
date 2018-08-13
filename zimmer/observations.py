@@ -145,6 +145,13 @@ class HierarchicalIndependentAutoRegressiveObservations(_Observations):
                 weights.append(Ez[self.lags:])
 
             # Combine observations
+            if len(xs) == 0:
+                self.As[g, :, d] = 1.0
+                self.Vs[g, :, d] = 0
+                self.bs[g, :, d] = 0
+                self.inv_sigmas[g, :, d] = 0
+                continue
+
             xs = np.concatenate(xs)
             ys = np.concatenate(ys)
             weights = np.concatenate(weights)
