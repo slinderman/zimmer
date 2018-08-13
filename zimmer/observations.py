@@ -156,7 +156,7 @@ class HierarchicalIndependentAutoRegressiveObservations(_Observations):
                     self.As[g, k, d] = 1.0
                     self.Vs[g, k, d] = 0
                     self.bs[g, k, d] = 0
-                    self.inv_sigmas[k, d] = 0
+                    self.inv_sigmas[g, k, d] = 0
                     continue
 
                 Jk = 1 / self.eta * np.eye(self.lags + self.M + 1)
