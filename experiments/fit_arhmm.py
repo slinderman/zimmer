@@ -23,12 +23,12 @@ from zimmer.dynamics import HierarchicalAutoRegression, HierarchicalRobustAutoRe
 from zimmer.io import WormData, load_kato_key, load_kato_data
 
 # LDS Results
-lds_dir = os.path.join("results", "kato", "2018-03-16-hlds", "run001")
+lds_dir = os.path.join("results", "kato", "2018-03-21-hlds", "run001")
 signal = "dff_diff"
 assert os.path.exists(lds_dir)
 
 # AR-HMM RESULTS
-results_dir = os.path.join("results", "kato", "2018-03-16-arhmm", "run001")
+results_dir = os.path.join("results", "kato", "2018-03-21-arhmm", "run001")
 
 assert os.path.exists(results_dir)
 fig_dir = os.path.join(results_dir, "figures")
@@ -582,10 +582,10 @@ def simulate_trajectories(model, N_trajs=100, T_sim=30, N_sims=4, group=4, min_s
 #         # plot_x_at_changepoints(z_finals, xs,
 #         #                        results_dir=fig_dir)
 #
-        plot_x_at_changepoints(z_trues, xs,
-                               colors=zimmer_colors,
-                               basename="x_cp_zimmer",
-                               results_dir=fig_dir)
+#        plot_x_at_changepoints(z_trues, xs,
+#                               colors=zimmer_colors,
+#                               basename="x_cp_zimmer",
+#                               results_dir=fig_dir)
 #
 #     if do_plot_latent_trajectories_vs_time:
 #         plot_slice = (9 * 60 * 3, 12 * 60 * 3)
@@ -1457,7 +1457,7 @@ def hack_simulation_2(model, data, T=100, init_x=None, init_z=None, with_noise=T
 
 if __name__ == "__main__":
     # Load the continuous states found with the LDS
-    ys, ms, z_trues, z_true_key, neuron_names = load_kato_data(include_unnamed=True)
+    ys, ms, z_trues, z_true_key, neuron_names = load_kato_data(include_unnamed=False)
     D_obs = ys[0].shape[1]
     with open(os.path.join(lds_dir, "lds_data.pkl"), "rb") as f:
         lds_results = pickle.load(f)
@@ -1491,7 +1491,8 @@ if __name__ == "__main__":
     # Set the AR-HMM hyperparameters
     ar_params = dict(nu_0=D_latent + 2,
                      S_0=np.eye(D_latent),
-                     M_0=np.hstack((np.eye(D_latent), np.zeros((D_latent, D_latent * (N_lags - 1) + 1)))),
+                     M_0=np.hstack((np.eye(D_latent),
+                                    np.zeros((D_latent, D_latent * (N_lags - 1) + 1)))),
                      K_0=np.eye(D_latent * N_lags + 1),
                      affine=True)
     ar_params = get_empirical_ar_params(xtrains, ar_params)
@@ -1502,7 +1503,7 @@ if __name__ == "__main__":
                           Sigma_0=np.eye(ar_params['M_0'].size),
                           nu_0=ar_params['nu_0'],
                           Q_0=ar_params['S_0'],
-                          etasq=1.0,
+                          etasq=0.1,
                           affine=True)
 
     Ks = np.concatenate(([1], np.arange(2, 21, 2)))

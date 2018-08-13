@@ -7,6 +7,8 @@ np.random.seed(1234)
 from tqdm import tqdm
 from functools import partial
 
+from sklearn.cluster import KMeans
+
 # Load worm modeling specific stuff
 from zimmer.io import load_kato_data
 from zimmer.models import HierarchicalLDS
@@ -16,24 +18,14 @@ from zimmer.emissions import HierarchicalDiagonalRegression
 from pybasicbayes.distributions import Regression, DiagonalRegression
 from pylds.models import MissingDataLDS
 
-# IO
-# run_num = 3
-# results_dir = os.path.join("results", "2017-11-03-hlds", "run{:03d}".format(run_num))
-# signal = "dff_diff"
-
-# run_num = 1
-# results_dir = os.path.join("results", "2018-01-17-hlds", "run{:03d}".format(run_num))
-# signal = "dff_deriv"
-
-run_num = 2
-results_dir = os.path.join("results", "kato", "2018-03-16-hlds", "run{:03d}".format(run_num))
-signal = "dff_diff"
+run_num = 1
+results_dir = os.path.join("results", "kato", "2018-03-21-hlds", "run{:03d}".format(run_num))
 
 assert os.path.exists(results_dir)
 fig_dir = os.path.join(results_dir, "figures")
 
 N_worms = 5
-N_clusters = 12
+N_clusters = 10
 
 
 def cached(results_name):
@@ -204,10 +196,94 @@ def order_latent_dims(xtrains, C, ytrains, mtrains):
     perm = np.argsort(corrcoeffs)[::-1]
     return perm
 
+def _cluster_neurons_kmeans(C_norm):
+    cluster = KMeans(n_clusters=N_clusters)
+    cluster.fit(C_norm)
+    neuron_clusters = cluster.labels_
+    return neuron_clusters
+
+
+def _cluster_neurons_agglomerative(C_norm):
+    from sklearn.cluster import AgglomerativeClustering
+    cluster = AgglomerativeClustering(n_clusters=N_clusters)
+    cluster.fit(C_norm)
+    neuron_clusters = cluster.labels_
+    return neuron_clusters
+
+
+def _cluster_neurons_gmm(C_norm, N_folds=8):
+    from pybasicbayes.models import Mixture
+    from pybasicbayes.distributions import Gaussian
+
+    N, D = C_norm.shape
+    hlls = -np.inf * np.ones((N_clusters+1, N_folds))
+    folds = np.random.permutation(
+        np.arange(N_folds).repeat((N // N_folds) + 1)[:N])
+
+    def _M_step(gmm):
+        # component parameters
+        for idx, c in enumerate(gmm.components):
+            c.max_likelihood([l.data[l.z == idx]  for l in gmm.labels_list])
+            
+        # mixture weights
+        #gmm.weights.max_likelihood([l.z for l in gmm.labels_list])
+    
+    
+    for K in range(2, N_clusters+1):
+        for fold in range(N_folds):
+            print("Fitting ", K, " clusters; fold ", fold)
+            C_test = C_norm[folds == fold]
+            C_train = C_norm[~(folds == fold)]
+
+            # Make a GMM with this many clusters
+            gmm = Mixture([Gaussian(mu_0=np.zeros(D),
+                                    sigma_0=np.eye(D),
+                                    nu_0=D+1,
+                                    kappa_0=1.0)
+                           for _ in range(K)],
+                          alpha_0=1.0)
+
+            # Initialize with kmeans
+            km = KMeans(n_clusters=K)
+            km.fit(C_train)
+            init_z = km.labels_
+            
+            # Fit the mixture on the training data
+            gmm.add_data(C_train, z=init_z)
+            _M_step(gmm)
+            for _ in range(100):
+                gmm.resample_model()
+                    
+            # Compute held out log likelihood for this fold
+            hlls[K, fold] = gmm.log_likelihood(C_test)
+
+    # Find the best number of clusters and fit a GMM to all data
+    best_K = np.argmax(np.mean(hlls, axis=1))
+    print("Average hlls: ", np.mean(hlls, axis=1))
+    print("Best number of clusters: ", best_K)
+
+    gmm = Mixture([Gaussian(mu_0=np.zeros(D),
+                            sigma_0=np.eye(D),
+                            nu_0=D+1,
+                            kappa_0=1.0)
+                   for _ in range(best_K)],
+                  alpha_0=1.0)
+
+    km = KMeans(n_clusters=best_K)
+    km.fit(C_norm)
+    init_z = km.labels_
+
+    gmm.add_data(C_norm, z=init_z)
+    _M_step(gmm)
+    for _ in range(100):
+        gmm.resample_model()
+
+    neuron_clusters = gmm.labels_list[0].z
+    return neuron_clusters
+
 
 def cluster_neurons(best_model, seed=0, max_neurons=59):
     from pyhsmm.util.general import relabel_by_permutation
-    from sklearn.cluster import KMeans
     # C_true = best_model.emission_distn.A[:, :-1].copy()
     # C_true /= np.linalg.norm(C_true, axis=1)[:, None]
     C_norm = C[:,:-1].copy()
@@ -217,11 +293,14 @@ def cluster_neurons(best_model, seed=0, max_neurons=59):
     max_neurons = max_neurons if max_neurons is not None else D_obs
     C_norm = C_norm[:max_neurons]
 
+    # Perform the clustering
     np.random.seed(seed)
-    cluster = KMeans(n_clusters=N_clusters)
-    cluster.fit(C_norm)
-    neuron_clusters = cluster.labels_
+    #neuron_clusters = _cluster_neurons_kmeans(C_norm)
+    neuron_clusters = _cluster_neurons_agglomerative(C_norm)
+    #neuron_clusters = _cluster_neurons_gmm(C_norm)
+    
 
+    # Compute the average tuning within each cluster
     avg_C = np.zeros((N_clusters, best_model.D_latent))
     for c in range(N_clusters):
         if not np.any(neuron_clusters == c):
@@ -292,7 +371,7 @@ def heldout_neuron_identification(N_heldout=10, D_latent=10, is_hierarchical=Tru
     ypreds = [x.dot(C.T) for x in xs]
 
     # Now the coup de grâce -- use all the unlabeled neurons
-    all_ys, all_ms, _, _, all_neuron_names = load_data(include_unnamed=True)
+    all_ys, all_ms, _, _, all_neuron_names = load_data(include_unnamed=False)
 
     # Compute similarity between heldout neuron and true identity
     # and between other unlabeled neurons and true identity
@@ -448,7 +527,7 @@ def heldout_neuron_identification_corr(N_heldout=10, D_latent=10, is_hierarchica
     ypreds = [x.dot(C.T) for x in xs]
 
     # Now the coup de grâce -- use all the unlabeled neurons
-    all_ys, all_ms, _, _, all_neuron_names = load_data(include_unnamed=True)
+    all_ys, all_ms, _, _, all_neuron_names = load_data(include_unnamed=False)
 
     # Compute similarity between heldout neuron and true identity
     # and between other unlabeled neurons and true identity
@@ -618,7 +697,7 @@ def heldout_neuron_identification_corr(N_heldout=10, D_latent=10, is_hierarchica
 
 
 if __name__ == "__main__":
-    ys, ms, z_trues, z_true_key, neuron_names = load_kato_data(include_unnamed=True)
+    ys, ms, z_trues, z_true_key, neuron_names = load_kato_data(include_unnamed=False)
     D_obs = ys[0].shape[1]
 
     # Split test train
@@ -630,9 +709,11 @@ if __name__ == "__main__":
 
     D_latents = np.arange(2, 21, 2)
     fit_results = fit_all_models(D_latents)
-    #best_model = fit_results["hier"][2][np.where(D_latents == 10)[0][0]]
     best_model = fit_results["hier"][0]
-    
+
+    # Override the test likelihood comparison and take a specific model
+    best_model = fit_results["hier"][2][np.where(D_latents == 8)[0][0]]
+
     # Do an E step to smooth the latent states
     C = best_model.emission_distn.A
     xtrains = []
@@ -678,7 +759,7 @@ if __name__ == "__main__":
         D_latent=best_model.D_latent,
         C=C,
         perm=dim_perm,
-        N_clusters=N_clusters,
+        N_clusters=neuron_clusters.max()+1,
         neuron_clusters=neuron_clusters,
         neuron_perm=neuron_perm,
         fit_results=fit_results
