@@ -1,3 +1,5 @@
+import os
+import pickle
 import numpy as np
 
 def states_to_changepoints(z):
