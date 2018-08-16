@@ -216,7 +216,7 @@ class HierarchicalIndependentAutoRegressiveObservations(_Observations):
             for l in range(self.lags):
                 mu += As[tag, z,:,l] * xhist[-l-1]
 
-            sigma = sigmas[z] if with_noise else 0
+            sigma = sigmas[tag, z] if with_noise else 0
             return mu + np.sqrt(sigma) * npr.randn(D)
 
     def smooth(self, expectations, data, input, tag):
