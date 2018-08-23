@@ -21,7 +21,7 @@ class HierarchicalRecurrentOnlyTransitions(_Transitions):
     with a constant bias r.
     """
     def __init__(self, K, D, G=1, M=0, eta=0.1):
-        super(RecurrentOnlyTransitions, self).__init__(K, D, M)
+        super(HierarchicalRecurrentOnlyTransitions, self).__init__(K, D, M)
 
         # Global recurrence parameters
         self.shared_Ws = npr.randn(K, M)
@@ -31,9 +31,9 @@ class HierarchicalRecurrentOnlyTransitions(_Transitions):
         # Per-group parameters
         self.G = G
         self.eta = eta
-        self.Ws = npr.randn(G, K, M)
-        self.Rs = npr.randn(G, K, D)
-        self.r = npr.randn(G, K)
+        self.Ws = self.shared_Ws + np.sqrt(eta) * npr.randn(G, K, M)
+        self.Rs = self.shared_Rs + np.sqrt(eta) * npr.randn(G, K, D)
+        self.r = self.shared_r + np.sqrt(eta) * npr.randn(G, K)
 
     @property
     def params(self):
@@ -58,6 +58,14 @@ class HierarchicalRecurrentOnlyTransitions(_Transitions):
             self.Rs[g] = self.Rs[g, perm]
             self.r[g] = self.r[g, perm]
 
+    def log_prior(self):
+        lp = 0
+        for g in range(self.G):
+            lp += np.sum(norm.logpdf(self.Ws[g], self.shared_Ws[g], np.sqrt(self.eta)))
+            lp += np.sum(norm.logpdf(self.Rs[g], self.shared_Rs[g], np.sqrt(self.eta)))
+            lp += np.sum(norm.logpdf(self.r[g], self.shared_r[g], np.sqrt(self.eta)))
+        return lp
+            
     def log_transition_matrices(self, data, input, mask, tag):
         T, D = data.shape
         log_Ps = np.dot(input[1:], self.Ws[tag].T)[:, None, :]              # inputs
@@ -65,7 +73,6 @@ class HierarchicalRecurrentOnlyTransitions(_Transitions):
         log_Ps = log_Ps + self.r[tag]                                       # bias
         log_Ps = np.tile(log_Ps, (1, self.K, 1))                            # expand
         return log_Ps - logsumexp(log_Ps, axis=2, keepdims=True)            # normalize
-
 
     def m_step(self, expectations, datas, inputs, masks, tags, optimizer="adam", num_iters=10, **kwargs):
         """
@@ -82,20 +89,11 @@ class HierarchicalRecurrentOnlyTransitions(_Transitions):
                 elbo += np.sum(expected_joints * log_Ps)
             return elbo
 
-        # Incorporate the prior
-        def _log_prior():
-            lp = 0
-            for g in range(self.G):
-                lp += np.sum(norm.logpdf(self.Ws[g], self.shared_Ws[g], np.sqrt(self.eta)))
-                lp += np.sum(norm.logpdf(self.Rs[g], self.shared_Rs[g], np.sqrt(self.eta)))
-                lp += np.sum(norm.logpdf(self.r[g], self.shared_r[g], np.sqrt(self.eta)))
-        return lp
-
         # define optimization target
         T = sum([data.shape[0] for data in datas])
         def _objective(params, itr):
             self.params = params
-            obj = _expected_log_joint(expectations) + _log_prior()
+            obj = _expected_log_joint(expectations) + self.log_prior()
             return -obj / T
 
         self.params = optimizer(grad(_objective), self.params, num_iters=num_iters, **kwargs)

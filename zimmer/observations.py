@@ -87,7 +87,15 @@ class HierarchicalIndependentAutoRegressiveObservations(_Observations):
                 sigmas = np.var(resid, axis=0)
                 for g in range(self.G):
                     self.inv_sigmas[g, k, d] = np.log(sigmas + 1e-8)
-        
+
+    def log_prior(self):
+        lp = 0
+        for g in range(self.G):
+            lp += np.sum(norm.logpdf(self.As[g], self.shared_As[g], np.sqrt(self.eta)))
+            lp += np.sum(norm.logpdf(self.bs[g], self.shared_bs[g], np.sqrt(self.eta)))
+            lp += np.sum(norm.logpdf(self.Vs[g], self.shared_Vs[g], np.sqrt(self.eta)))
+        return lp
+                    
     def _compute_mus(self, data, input, mask, tag):
         T, D = data.shape
         As, bs, Vs = self.As[tag], self.bs[tag], self.Vs[tag]
