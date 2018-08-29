@@ -8,7 +8,7 @@
 
 % \title{\large Discrete and continuous latent states of neural activity in \textit{Caenorhabditis elegans}}
 % \title{Hierarchical recurrent models reveal latent states of neural activity in \textit{C. elegans}}
-\title{Hierarchical state space models reveal dynamics of neural activity in \textit{C. elegans}}
+\title{Recurrent state space models capture discrete and continuous dynamics of neural activity in \textit{C. elegans}}
 \author{Scott Linderman$^{\text{1}}$,
   Annika Nichols$^{\text{2}}$,
   David Blei$^{\text{1}}$,
@@ -202,7 +202,8 @@ individual variability. We construct a recurrent, robust, and
 hierarchical state space model that addresses these challenges,
 decomposing complex dynamics into a collection of simpler pieces that
 can be learned from noisy, partial recordings with trial-to-trial
-variability.  We call this model \textbf{TBD}.\todo{name it!}
+variability.  We call this model \textbf{TBD}.
+%\todo{name it!}
 
 We analyze the data presented in~\citet{kato2015global} and
 \citet{nichols2017global}, which consist of a collection of optical
@@ -734,8 +735,7 @@ of turns, and the \textsf{SMDV} are motor neurons that initiate
 ventral turns.  We also see that states 6 (orange) and 5 (purple) often
 produce a dip followed by a rise, respectively, of activation on cluster 8,
 which together produce a dorsal turn.
-\todo{Need confirmation of these results.  Hard for me to tell difference between
-dorsal turn activation (orange to purple) and ventral turn (green to brown).}
+%\todo{Need confirmation of these results.  Hard for me to tell difference between dorsal turn activation (orange to purple) and ventral turn (green to brown).}
 
 To understand the overall effect of these different syllables, we
 simulated 1000 continuous latent state trajectories for each, with
@@ -1165,7 +1165,7 @@ softmax function, which exponentiates and normalizes
 the~$K$-dimensional argument~${r_{z_t^{(w)}} + R x_t^{(w)}}$.
 
 \paragraph{Input-driven transition probabilities}
-todo
+
 \todo[inline]{Detail the model for how transition probabilities depend
   on oxygen and change in oxygen concentration.  Straightforward extension
   of the recurrent model above.}
