@@ -60,6 +60,17 @@ class HierarchicalRecurrentTransitions(_Transitions):
             self.Ws[g] = self.Ws[g, perm]
             self.Rs[g] = self.Rs[g, perm]
 
+    def initialize_from_standard(self, tr):
+        # Copy the transition parameters
+        self.shared_log_Ps = tr.log_Ps.copy()
+        self.shared_Ws = tr.Ws.copy()
+        self.shared_Rs = tr.Rs.copy()
+
+        for g in range(self.G):
+            self.log_Ps[g] = tr.log_Ps.copy()
+            self.Ws[g] = tr.Ws.copy()
+            self.Rs[g] = tr.Rs.copy()
+                        
     def log_prior(self):
         lp = 0
         for g in range(self.G):

@@ -88,12 +88,24 @@ class HierarchicalIndependentAutoRegressiveObservations(_Observations):
                 for g in range(self.G):
                     self.inv_sigmas[g, k, d] = np.log(sigmas + 1e-8)
 
+    def initialize_from_standard(self, ar):
+        # Copy the observation parameters
+        self.shared_As = ar.As.copy()
+        self.shared_Vs = ar.Vs.copy()
+        self.shared_bs = ar.bs.copy()
+
+        for g in range(self.G):
+            self.As[g] = ar.As.copy()
+            self.Vs[g] = ar.Vs.copy()
+            self.bs[g] = ar.bs.copy()
+            self.inv_sigmas[g] = ar.inv_sigmas.copy()
+                    
     def log_prior(self):
         lp = 0
         for g in range(self.G):
-            lp += np.sum(norm.logpdf(self.As[g], self.shared_As[g], np.sqrt(self.eta)))
-            lp += np.sum(norm.logpdf(self.bs[g], self.shared_bs[g], np.sqrt(self.eta)))
-            lp += np.sum(norm.logpdf(self.Vs[g], self.shared_Vs[g], np.sqrt(self.eta)))
+            lp += np.sum(norm.logpdf(self.As[g], self.shared_As, np.sqrt(self.eta)))
+            lp += np.sum(norm.logpdf(self.bs[g], self.shared_bs, np.sqrt(self.eta)))
+            lp += np.sum(norm.logpdf(self.Vs[g], self.shared_Vs, np.sqrt(self.eta)))
         return lp
                     
     def _compute_mus(self, data, input, mask, tag):
@@ -319,12 +331,24 @@ class HierarchicalAutoRegressiveObservations(_Observations):
             for g in range(self.G):
                 self.inv_sigmas[g, k] = np.log(sigmas + 1e-8)
 
+    def initialize_from_standard(self, ar):
+        # Copy the observation parameters
+        self.shared_As = ar.As.copy()
+        self.shared_Vs = ar.Vs.copy()
+        self.shared_bs = ar.bs.copy()
+
+        for g in range(self.G):
+            self.As[g] = ar.As.copy()
+            self.Vs[g] = ar.Vs.copy()
+            self.bs[g] = ar.bs.copy()
+            self.inv_sigmas[g] = ar.inv_sigmas.copy()
+
     def log_prior(self):
         lp = 0
         for g in range(self.G):
-            lp += np.sum(norm.logpdf(self.As[g], self.shared_As[g], np.sqrt(self.eta)))
-            lp += np.sum(norm.logpdf(self.bs[g], self.shared_bs[g], np.sqrt(self.eta)))
-            lp += np.sum(norm.logpdf(self.Vs[g], self.shared_Vs[g], np.sqrt(self.eta)))
+            lp += np.sum(norm.logpdf(self.As[g], self.shared_As, np.sqrt(self.eta)))
+            lp += np.sum(norm.logpdf(self.bs[g], self.shared_bs, np.sqrt(self.eta)))
+            lp += np.sum(norm.logpdf(self.Vs[g], self.shared_Vs, np.sqrt(self.eta)))
         return lp
                     
     def _compute_mus(self, data, input, mask, tag):
@@ -389,7 +413,6 @@ class HierarchicalAutoRegressiveObservations(_Observations):
             self.Vs[g] = 0
             self.bs[g] = 0
             self.inv_sigmas[g] = 0
-            continue
 
         xs = np.concatenate(xs)
         ys = np.concatenate(ys)
@@ -397,15 +420,16 @@ class HierarchicalAutoRegressiveObservations(_Observations):
 
         # Otherwise, fit a weighted linear regression for each discrete state
         for k in range(K):
-            for d in range(D):
-                # Check for zero weights (singular matrix)
-                if np.sum(weights[:, k]) < lags + M + 1:
-                    self.As[g, k, d] = 0
-                    self.Vs[g, k, d] = 0
-                    self.bs[g, k, d] = 0
-                    self.inv_sigmas[g, k, d] = 0
-                    continue
+            # Check for zero weights (singular matrix)
+            if np.sum(weights[:, k]) < lags + M + 1:
+                self.As[g, k] = self.shared_As[k]
+                self.Vs[g, k] = self.shared_Vs[k]
+                self.bs[g, k] = self.shared_bs[k]
+                self.inv_sigmas[g, k] = 0
+                continue
 
+            # Update each row of the AR matrix
+            for d in range(D):
                 Jk = 1 / eta * np.eye(D * lags + M + 1)
                 hk = 1 / eta * np.concatenate((self.shared_As[k, d], self.shared_Vs[k, d], [self.shared_bs[k, d]]))
 
