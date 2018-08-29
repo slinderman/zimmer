@@ -203,7 +203,7 @@ class HierarchicalIndependentAutoRegressiveObservations(_Observations):
                 # Update the variances
                 yhats = xs.dot(muk)
                 sqerr = (ys - yhats)**2
-                self.inv_sigmas[g, k, d] = np.log(np.average(sqerr, weights=weights[:,k], axis=0))
+                self.inv_sigmas[g, k, d] = np.log(np.average(sqerr, weights=weights[:,k], axis=0) + 1e-16)
 
     def _m_step_shared(self, expectations, datas, inputs, masks, tags):
         G, K, D, M = self.G, self.K, self.D, self.M
@@ -261,7 +261,7 @@ class HierarchicalAutoRegressiveObservations(_Observations):
         # Global AR parameters
         assert lags > 0 
         self.lags = lags
-        self.As = .95 * np.array([
+        self.shared_As = .95 * np.array([
             np.column_stack([random_rotation(D), np.zeros((D, (lags-1) * D))]) 
             for _ in range(K)])
         self.shared_bs = npr.randn(K, D)
@@ -421,7 +421,7 @@ class HierarchicalAutoRegressiveObservations(_Observations):
         # Otherwise, fit a weighted linear regression for each discrete state
         for k in range(K):
             # Check for zero weights (singular matrix)
-            if np.sum(weights[:, k]) < lags + M + 1:
+            if np.sum(weights[:, k]) < D * lags + M + 1:
                 self.As[g, k] = self.shared_As[k]
                 self.Vs[g, k] = self.shared_Vs[k]
                 self.bs[g, k] = self.shared_bs[k]
@@ -445,7 +445,7 @@ class HierarchicalAutoRegressiveObservations(_Observations):
                 # Update the variances
                 yhats = xs.dot(muk)
                 sqerr = (ys[:, d] - yhats)**2
-                self.inv_sigmas[g, k, d] = np.log(np.average(sqerr, weights=weights[:,k], axis=0))
+                self.inv_sigmas[g, k, d] = np.log(np.average(sqerr, weights=weights[:,k], axis=0) + 1e-16)
 
     def _m_step_shared(self, expectations, datas, inputs, masks, tags):
         G, K, D, M = self.G, self.K, self.D, self.M
