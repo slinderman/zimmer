@@ -519,7 +519,7 @@ class HierarchicalRobustAutoRegressiveObservations(_Observations):
         self.bs = npr.randn(G, K, D)
         self.Vs = npr.randn(G, K, D, M)
         self.inv_sigmas = -4 + npr.randn(G, K, D)
-        self.inv_nus = np.log(4) * np.ones(G, K)
+        self.inv_nus = np.log(4) * np.ones((G, K))
 
     @property
     def params(self):
@@ -631,7 +631,7 @@ class HierarchicalRobustAutoRegressiveObservations(_Observations):
         D = self.D
         mus = self._compute_mus(data, input, mask, tag)
         sigmas = self._compute_sigmas(data, input, mask, tag)
-        nus = np.exp(self.inv_nus)
+        nus = np.exp(self.inv_nus)[tag]
 
         resid = data[:, None, :] - mus
         z = resid / sigmas
