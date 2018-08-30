@@ -490,3 +490,173 @@ class HierarchicalAutoRegressiveObservations(_Observations):
         mask = np.ones((T, self.D), dtype=bool) 
         mus = self._compute_mus(data, input, mask, tag)
         return (expectations[:, :, None] * mus).sum(1)
+
+
+class HierarchicalRobustAutoRegressiveObservations(_Observations):
+    def __init__(self, K, D, G=1, M=0, lags=1, eta=0.1):
+        super(HierarchicalRobustAutoRegressiveObservations, self).__init__(K, D, M)
+        
+        # Distribution over initial point
+        self.mu_init = np.zeros(D)
+        self.inv_sigma_init = np.zeros(D)
+        
+        # Global AR parameters
+        assert lags > 0 
+        self.lags = lags
+        self.shared_As = .95 * np.array([
+            np.column_stack([random_rotation(D), np.zeros((D, (lags-1) * D))]) 
+            for _ in range(K)])
+        self.shared_bs = npr.randn(K, D)
+        self.shared_Vs = npr.randn(K, D, M)
+        
+        # Per-group AR parameters
+        self.G = G
+        self.eta = eta
+        self.As = .95 * np.array([
+                [np.column_stack([random_rotation(D), np.zeros((D, (lags-1) * D))]) for _ in range(K)]
+                for _ in range(G)]
+            )
+        self.bs = npr.randn(G, K, D)
+        self.Vs = npr.randn(G, K, D, M)
+        self.inv_sigmas = -4 + npr.randn(G, K, D)
+        self.inv_nus = np.log(4) * np.ones(G, K)
+
+    @property
+    def params(self):
+        return self.shared_As, self.shared_bs, self.shared_Vs, \
+               self.As, self.bs, self.Vs, self.inv_sigmas, self.inv_nus
+        
+    @params.setter
+    def params(self, value):
+        self.shared_As, self.shared_bs, self.shared_Vs, \
+        self.As, self.bs, self.Vs, self.inv_sigmas, self.inv_nus = value
+        
+    def permute(self, perm):
+        self.shared_As = self.shared_As[perm]
+        self.shared_bs = self.shared_bs[perm]
+        self.shared_Vs = self.shared_Vs[perm]
+
+        for g in range(self.G):
+            self.As[g] = self.As[g, perm]
+            self.bs[g] = self.bs[g, perm]
+            self.Vs[g] = self.Vs[g, perm]
+            self.inv_sigmas[g] = self.inv_sigmas[g, perm]
+            self.inv_nus[g] = self.inv_nus[g, perm]
+
+    def initialize(self, datas, inputs=None, masks=None, tags=None):
+        # Initialize with linear regressions
+        from sklearn.linear_model import LinearRegression
+        data = np.concatenate(datas) 
+        input = np.concatenate(inputs)
+        T = data.shape[0]
+
+        # Initialize with linear regressions
+        from sklearn.linear_model import LinearRegression
+        data = np.concatenate(datas) 
+        input = np.concatenate(inputs)
+        T = data.shape[0]
+
+        for k in range(self.K):
+            ts = npr.choice(T-self.lags, replace=False, size=(T-self.lags)//self.K)
+            x = np.column_stack([data[ts + l] for l in range(self.lags)] + [input[ts]])
+            y = data[ts+self.lags]
+            lr = LinearRegression().fit(x, y)
+            self.shared_As[k] = lr.coef_[:, :self.D * self.lags]
+            self.shared_Vs[k] = lr.coef_[:, self.D * self.lags:]
+            self.shared_bs[k] = lr.intercept_
+            
+            for g in range(self.G):
+                    self.As[g, k] = self.shared_As[k]
+                    self.bs[g, k] = self.shared_bs[k]
+                    self.Vs[g, k] = self.shared_Vs[k]
+
+            resid = y - lr.predict(x)
+            sigmas = np.var(resid, axis=0)
+            for g in range(self.G):
+                self.inv_sigmas[g, k] = np.log(sigmas + 1e-8)
+
+    def initialize_from_standard(self, ar):
+        # Copy the observation parameters
+        self.shared_As = ar.As.copy()
+        self.shared_Vs = ar.Vs.copy()
+        self.shared_bs = ar.bs.copy()
+
+        for g in range(self.G):
+            self.As[g] = ar.As.copy()
+            self.Vs[g] = ar.Vs.copy()
+            self.bs[g] = ar.bs.copy()
+            self.inv_sigmas[g] = ar.inv_sigmas.copy()
+
+    def log_prior(self):
+        lp = 0
+        for g in range(self.G):
+            lp += np.sum(norm.logpdf(self.As[g], self.shared_As, np.sqrt(self.eta)))
+            lp += np.sum(norm.logpdf(self.bs[g], self.shared_bs, np.sqrt(self.eta)))
+            lp += np.sum(norm.logpdf(self.Vs[g], self.shared_Vs, np.sqrt(self.eta)))
+        return lp
+                    
+    def _compute_mus(self, data, input, mask, tag):
+        T, D = data.shape
+        As, bs, Vs = self.As[tag], self.bs[tag], self.Vs[tag]
+
+        # Instantaneous inputs
+        mus = np.matmul(Vs[None, ...], input[self.lags:, None, :self.M, None])[:, :, :, 0]
+
+        # Lagged data
+        for l in range(self.lags):
+            mus = mus + np.matmul(As[None, :, :, l*D:(l+1)*D], 
+                                  data[self.lags-l-1:-l-1, None, :, None])[:, :, :, 0]
+
+        # Bias
+        mus = mus + bs
+
+        # Pad with the initial condition
+        mus = np.concatenate((self.mu_init * np.ones((self.lags, self.K, self.D)), mus))
+
+        assert mus.shape == (T, self.K, D)
+        return mus
+
+    def _compute_sigmas(self, data, input, mask, tag):
+        T, D = data.shape
+        inv_sigmas = self.inv_sigmas[tag]
+        
+        sigma_init = np.exp(self.inv_sigma_init) * np.ones((self.lags, self.K, self.D))
+        sigma_ar = np.repeat(np.exp(inv_sigmas)[None, :, :], T-self.lags, axis=0)
+        sigmas = np.concatenate((sigma_init, sigma_ar))
+        assert sigmas.shape == (T, self.K, D)
+        return sigmas
+
+    def log_likelihoods(self, data, input, mask, tag):
+        D = self.D
+        mus = self._compute_mus(data, input, mask, tag)
+        sigmas = self._compute_sigmas(data, input, mask, tag)
+        nus = np.exp(self.inv_nus)
+
+        resid = data[:, None, :] - mus
+        z = resid / sigmas
+        return -0.5 * (nus + D) * np.log(1.0 + (resid * z).sum(axis=2) / nus) + \
+            gammaln((nus + D) / 2.0) - gammaln(nus / 2.0) - D / 2.0 * np.log(nus) \
+            -D / 2.0 * np.log(np.pi) - 0.5 * np.sum(np.log(sigmas), axis=-1)
+
+    def sample_x(self, z, xhist, input=None, tag=0, with_noise=True):
+        D, As, bs, sigmas = self.D, self.As, self.bs, np.exp(self.inv_sigmas)
+        if xhist.shape[0] < self.lags:
+            sigma_init = np.exp(self.inv_sigma_init) if with_noise else 0
+            return self.mu_init + np.sqrt(sigma_init) * npr.randn(D)
+        else:
+            mu = bs[tag, z].copy()
+            for l in range(self.lags):
+                mu += As[tag, z][:,l*D:(l+1)*D].dot(xhist[-l-1])
+
+            sigma = sigmas[tag, z] if with_noise else 0
+            return mu + np.sqrt(sigma) * npr.randn(D)
+
+    def smooth(self, expectations, data, input, tag):
+        """
+        Compute the mean observation under the posterior distribution
+        of latent discrete states.
+        """
+        T = expectations.shape[0]
+        mask = np.ones((T, self.D), dtype=bool) 
+        mus = self._compute_mus(data, input, mask, tag)
+        return (expectations[:, :, None] * mus).sum(1)
