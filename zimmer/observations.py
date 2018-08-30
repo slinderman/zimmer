@@ -586,6 +586,7 @@ class HierarchicalRobustAutoRegressiveObservations(_Observations):
             self.Vs[g] = ar.Vs.copy()
             self.bs[g] = ar.bs.copy()
             self.inv_sigmas[g] = ar.inv_sigmas.copy()
+            self.inv_nus[g] = ar.inv_nus.copy()
 
     def log_prior(self):
         lp = 0
