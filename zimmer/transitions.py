@@ -22,7 +22,7 @@ class HierarchicalStationaryTransitions(_Transitions):
     with a constant bias r.
     """
     def __init__(self, K, D, G=1, M=0, eta=0.1):
-        super(HierarchicalRecurrentTransitions, self).__init__(K, D, M)
+        super(HierarchicalStationaryTransitions, self).__init__(K, D, M)
 
         
         # Global recurrence parameters
