@@ -15,6 +15,82 @@ from ssm.util import random_rotation, ensure_args_are_lists, ensure_args_not_non
 from ssm.preprocessing import interpolate_data
 
 
+class HierarchicalStationaryTransitions(_Transitions):
+    """
+    Only allow the past observations and inputs to influence the
+    next state.  Get rid of the transition matrix and replace it
+    with a constant bias r.
+    """
+    def __init__(self, K, D, G=1, M=0, eta=0.1):
+        super(HierarchicalRecurrentTransitions, self).__init__(K, D, M)
+
+        
+        # Global recurrence parameters
+        self.shared_log_Ps = npr.randn(K, K)
+
+        # Per-group parameters
+        self.G = G
+        self.eta = eta
+        self.log_Ps = self.shared_log_Ps + np.sqrt(eta) * npr.randn(G, K, K)
+        
+    @property
+    def params(self):
+        return self.shared_log_Ps, self.log_Ps
+    
+    @params.setter
+    def params(self, value):
+        self.shared_log_Ps, self.log_Ps = value
+
+    def permute(self, perm):
+        """
+        Permute the discrete latent states.
+        """
+        self.shared_log_Ps = self.shared_log_Ps[np.ix_(perm, perm)]
+        for g in range(self.G):
+            self.log_Ps[g] = self.log_Ps[g][np.ix_(perm, perm)]
+        
+    def initialize_from_standard(self, tr):
+        # Copy the transition parameters
+        self.shared_log_Ps = tr.log_Ps.copy()
+        for g in range(self.G):
+            self.log_Ps[g] = tr.log_Ps.copy()
+                        
+    def log_prior(self):
+        lp = 0
+        for g in range(self.G):
+            lp += np.sum(norm.logpdf(self.log_Ps[g], self.shared_log_Ps, np.sqrt(self.eta)))
+        return lp
+
+    def log_transition_matrices(self, data, input, mask, tag):
+        T, D = data.shape
+        log_Ps = np.tile(self.log_Ps[tag][None, :, :], (T-1, 1, 1)) 
+        return log_Ps - logsumexp(log_Ps, axis=2, keepdims=True)
+            
+    def m_step(self, expectations, datas, inputs, masks, tags, optimizer="adam", num_iters=10, **kwargs):
+        """
+        Use SGD to fit the model parameters
+        """
+        optimizer = dict(sgd=sgd, adam=adam, adam_with_convergence_check=adam_with_convergence_check)[optimizer]
+        
+        # Define the EM objective
+        def _expected_log_joint(expectations):
+            elbo = 0
+            for data, input, mask, tag, (expected_states, expected_joints) \
+                in zip(datas, inputs, masks, tags, expectations):
+                log_Ps = self.log_transition_matrices(data, input, mask, tag)
+                elbo += np.sum(expected_joints * log_Ps)
+            return elbo
+
+        # define optimization target
+        T = sum([data.shape[0] for data in datas])
+        def _objective(params, itr):
+            self.params = params
+            obj = _expected_log_joint(expectations) + self.log_prior()
+            return -obj / T
+
+        self.params = optimizer(grad(_objective), self.params, num_iters=num_iters, **kwargs)
+
+
 class HierarchicalRecurrentTransitions(_Transitions):
     """
     Only allow the past observations and inputs to influence the
