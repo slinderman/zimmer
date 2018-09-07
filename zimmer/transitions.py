@@ -273,10 +273,10 @@ class HierarchicalRecurrentOnlyTransitions(_Transitions):
     #         return -obj / T
 
     #     self.params = optimizer(grad(_objective), self.params, num_iters=num_iters, **kwargs)
-    
+
 
 class HierarchicalNeuralNetworkRecurrentTransitions(_Transitions):
-    def __init__(self, K, D, G=1, M=0, eta=0.1):
+    def __init__(self, K, D, G=1, M=0, eta=0.1, hidden_layer_sizes=(50,), nonlinearity="relu"):
         super(HierarchicalNeuralNetworkRecurrentTransitions, self).__init__(K, D, M)
 
         # Global recurrence parameters
