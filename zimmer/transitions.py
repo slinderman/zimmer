@@ -312,6 +312,17 @@ class HierarchicalNeuralNetworkRecurrentTransitions(_Transitions):
         self.shared_log_Ps, self.shared_weights, self.shared_biases, \
         self.log_Ps, self.weights, self.biases = value
 
+    def initialize_from_standard(self, tr):
+        # Copy the transition parameters
+        self.shared_log_Ps = tr.log_Ps.copy()
+        self.shared_weights = copy.deepcopy(tr.weights)
+        self.shared_biaes = copy.deepcopy(tr.biases)
+
+        for g in range(self.G):
+            self.log_Ps[g] = tr.log_Ps.copy()
+            self.weights[g] = copy.deepcopy(tr.weights)
+            self.biases[g] = copy.deepcopy(tr.biases)
+
     def permute(self, perm):
         """
         Permute the discrete latent states.
