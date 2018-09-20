@@ -681,3 +681,6 @@ class HierarchicalRobustAutoRegressiveObservations(_Observations):
         mask = np.ones((T, self.D), dtype=bool) 
         mus = self._compute_mus(data, input, mask, tag)
         return (expectations[:, :, None] * mus).sum(1)
+
+    def m_step(self, expectations, datas, inputs, masks, tags, num_iter=1, **kwargs):
+        pass
