@@ -617,15 +617,15 @@ class HierarchicalRobustAutoRegressiveObservations(_Observations):
         assert mus.shape == (T, self.K, D)
         return mus
 
-    # def _compute_sigmas(self, data, input, mask, tag):
-    #     T, D = data.shape
-    #     inv_sigmas = self.inv_sigmas[tag]
+    def _compute_sigmas(self, data, input, mask, tag):
+        T, D = data.shape
+        inv_sigmas = self.inv_sigmas[tag]
         
-    #     sigma_init = np.exp(self.inv_sigma_init) * np.ones((self.lags, self.K, self.D))
-    #     sigma_ar = np.repeat(np.exp(inv_sigmas)[None, :, :], T-self.lags, axis=0)
-    #     sigmas = np.concatenate((sigma_init, sigma_ar))
-    #     assert sigmas.shape == (T, self.K, D)
-    #     return sigmas
+        sigma_init = np.exp(self.inv_sigma_init) * np.ones((self.lags, self.K, self.D))
+        sigma_ar = np.repeat(np.exp(inv_sigmas)[None, :, :], T-self.lags, axis=0)
+        sigmas = np.concatenate((sigma_init, sigma_ar))
+        assert sigmas.shape == (T, self.K, D)
+        return sigmas
 
     # def log_likelihoods(self, data, input, mask, tag):
     #     D = self.D
@@ -658,6 +658,154 @@ class HierarchicalRobustAutoRegressiveObservations(_Observations):
             -D / 2.0 * np.log(np.pi) - 0.5 * np.sum(np.log(sigma_ar), axis=-1)
 
         return np.vstack((lls_init, lls_ar))
+
+    def _m_step_ar(self, g, expectations, datas, inputs, masks, tags, num_em_iters):
+        K, D, M, lags, eta = self.K, self.D, self.M, self.lags, self.eta
+
+        
+        # Collect data for this dimension
+        xs, ys, Ezs = [], [], []
+        for (Ez, _), data, input, mask, tag in zip(expectations, datas, inputs, masks, tags):
+            if tag != g:
+                continue
+
+            # Only use data if it is complete
+            if not np.all(mask):
+                raise Exception("Encountered missing data in AutoRegressiveObservations!") 
+
+            xs.append(
+                np.hstack([data[self.lags-l-1:-l-1] for l in range(self.lags)] 
+                          + [input[self.lags:, :self.M], np.ones((data.shape[0]-self.lags, 1))]))
+            ys.append(data[self.lags:])
+            Ezs.append(Ez[self.lags:])
+
+        for itr in range(num_em_iters):
+            # Compute expected precision for each data point given current parameters
+            taus = []
+            # for data, input, mask, tag in zip(datas, inputs, masks, tags):
+            for x, y in zip(xs, ys):
+                # mus = self._compute_mus(data, input, mask, tag)
+                # sigmas = self._compute_sigmas(data, input, mask, tag)
+                Afull = np.concatenate((self.As[g], self.Vs[g], self.bs[g, :, :, None]), axis=2)
+                mus = np.matmul(Afull[None, :, :, :], x[:, None, :, None])[:, :, :, 0]
+                sigmas = np.exp(self.inv_sigmas[g])
+                nus = np.exp(self.inv_nus[g, :, None])
+
+                # nu: (K,)  mus: (T, K, D)  sigmas: (K, D)  y: (T, D)  -> tau: (T, K, D)
+                alpha = nus/2 + 1/2
+                beta = nus/2 + 1/2 * (y[:, None, :] - mus)**2 / sigmas
+                taus.append(alpha / beta)
+
+            # Fit a weighted linear regression for each discrete state
+            for k in range(K):
+                
+                # # Check for zero weights (singular matrix)
+                # if np.sum(weights[:, k]) < D * lags + M + 1:
+                #     self.As[k] = 0
+                #     self.Vs[k] = 0
+                #     self.bs[k] = 0
+                #     self.inv_sigmas[k] = 0
+                #     continue
+
+                # Update each row of the AR matrix
+                for d in range(D):
+                    # Prior
+                    Jk = 1 / eta * np.eye(D * lags + M + 1)
+                    hk = 1 / eta * np.concatenate((self.shared_As[k, d], self.shared_Vs[k, d], [self.shared_bs[k, d]]))
+
+                    # Likelihood
+                    for x, y, Ez, tau in zip(xs, ys, Ezs, taus):
+                        # Compute the effective precision (product of E[z_t=k] and tau_{t, k, d}
+                        scale = Ez[:, k] * tau[:, k, d]
+                        Jk += np.sum(scale[:, None, None] * x[:,:,None] * x[:, None,:], axis=0)
+                        hk += np.sum(scale[:, None] * x * y[:, d:d+1], axis=0)
+
+                    # Solve the linear system and unpack the mean
+                    muk = np.linalg.solve(Jk, hk)
+                    self.As[g, k, d] = muk[:D*lags]
+                    self.Vs[g, k, d] = muk[D*lags:D*lags+M]
+                    self.bs[g, k, d] = muk[-1]
+
+                    # Update the variance
+                    sqerr = 0
+                    weight = 0
+                    for x, y, Ez, tau in zip(xs, ys, Ezs, taus):
+                        yhat = np.dot(x, muk)
+                        sqerr += np.sum(Ez[:, k] * tau[:, k, d] * (y[:, d] - yhat)**2)
+                        weight += np.sum(Ez[:, k])
+                    self.inv_sigmas[k, d] = np.log(sqerr / weight + 1e-16)
+
+    def _m_step_nu(self, g, expectations, datas, inputs, masks, tags, optimizer, **kwargs):
+        """
+        The shape parameter nu determines a gamma prior.  We have
+        
+            w_n ~ Gamma(nu/2, nu/2)
+            y_n ~ N(mu, sigma^2 / w_n)
+
+        To update w_n, we can samples w_n's from 
+        their conditional gamma distribution, as above, 
+        and then update nu_n to maximize their probability.
+        """
+        if "num_iters" not in kwargs:
+            kwargs["num_iters"] = 25
+        optimizer = dict(sgd=sgd, adam=adam)[optimizer]
+        K, D = self.K, self.D
+
+        # Sample the precisions w for each data point
+        taus = []
+        Ezs = []
+        for (Ez, _), data, input, mask, tag in zip(expectations, datas, inputs, masks, tags):
+            if tag != g:
+                continue 
+
+            # nu: (K,)  mus: (K, D)  sigmas: (K, D)  y: (T, D)  -> w: (T, K, D)
+            mus = self._compute_mus(data, input, mask, g)
+            sigmas = self._compute_sigmas(data, input, mask, g)
+                
+            nus = np.exp(self.inv_nus[:, None])
+            alpha = nus/2 + 1/2
+            beta = nus/2 + 1/2 * (data[:, None, :] - mus)**2 / sigmas
+            taus.append(npr.gamma(alpha, 1/beta))
+
+            Ezs.append(Ez)
+
+        # Maximize the expected log probability of taus | nu
+        def _objective(inv_nus, itr):
+            nus = np.exp(inv_nus)[:, None]
+            
+            elp = 0
+            T = 0
+            for tau, Ez in zip(taus, Ezs):
+                lp = np.sum(nus/2 * np.log(nus/2) - gammaln(nus/2) + \
+                           (nus/2 - 1) * np.log(tau) - tau * nus / 2, axis=2)
+                elp += np.sum(Ez * lp)
+                T += Ez.shape[0]
+
+            return -elp / T
+
+        self.inv_nus[g] = optimizer(grad(_objective), self.inv_nus[g], **kwargs)
+
+    def _m_step_shared(self, expectations, datas, inputs, masks, tags):
+        G, K, D, M = self.G, self.K, self.D, self.M
+        for d in range(D):
+            valid = [np.all(mask[:,d]) for mask in masks]
+            valid_tags = [tag for tag, valid in zip(tags, valid) if valid]
+            used = np.bincount(valid_tags, minlength=G) > 0
+            self.shared_As[:, d, :] = np.mean(self.As[used, :, d, :], axis=0)
+            self.shared_Vs[:, d, :] = np.mean(self.Vs[used, :, d, :], axis=0)
+            self.shared_bs[:, d] = np.mean(self.bs[used, :, d], axis=0)
+
+    def m_step(self, expectations, datas, inputs, masks, tags, num_iter=1, **kwargs):
+        G, K, D, M = self.G, self.K, self.D, self.M
+
+        for itr in range(num_iter):
+            # Update the per-group weights
+            for g in range(G):
+                self._m_step_ar(g, expectations, datas, inputs, masks, tags, 1)
+                self._m_step_nu(g, expectations, datas, inputs, masks, tags, "adam")
+
+            # Update the shared weights
+            self._m_step_shared(expectations, datas, inputs, masks, tags)
 
     def sample_x(self, z, xhist, input=None, tag=0, with_noise=True):
         D, As, bs, sigmas = self.D, self.As, self.bs, np.exp(self.inv_sigmas)
