@@ -493,7 +493,7 @@ class HierarchicalAutoRegressiveObservations(_Observations):
 
 
 class HierarchicalRobustAutoRegressiveObservations(_Observations):
-    def __init__(self, K, D, G=1, M=0, lags=1, eta=0.1):
+    def __init__(self, K, D, tags=(), M=0, lags=1, eta=0.1):
         super(HierarchicalRobustAutoRegressiveObservations, self).__init__(K, D, M)
         
         # Distribution over initial point
@@ -510,7 +510,11 @@ class HierarchicalRobustAutoRegressiveObservations(_Observations):
         self.shared_Vs = npr.randn(K, D, M)
         
         # Per-group AR parameters
-        self.G = G
+        self.tags = tags
+        self.tags_to_indices = dict([(tag, i) for i, tag in enumerate(tags)])
+        self.G = len(tags)
+        assert self.G > 0
+
         self.eta = eta
         self.As = .95 * np.array([
                 [np.column_stack([random_rotation(D), np.zeros((D, (lags-1) * D))]) for _ in range(K)]
@@ -566,9 +570,9 @@ class HierarchicalRobustAutoRegressiveObservations(_Observations):
             self.shared_bs[k] = lr.intercept_
             
             for g in range(self.G):
-                    self.As[g, k] = self.shared_As[k]
-                    self.bs[g, k] = self.shared_bs[k]
-                    self.Vs[g, k] = self.shared_Vs[k]
+                self.As[g, k] = self.shared_As[k]
+                self.bs[g, k] = self.shared_bs[k]
+                self.Vs[g, k] = self.shared_Vs[k]
 
             resid = y - lr.predict(x)
             sigmas = np.var(resid, axis=0)
@@ -598,7 +602,8 @@ class HierarchicalRobustAutoRegressiveObservations(_Observations):
                     
     def _compute_mus(self, data, input, mask, tag):
         T, D = data.shape
-        As, bs, Vs = self.As[tag], self.bs[tag], self.Vs[tag]
+        ind = self.tags_to_indices[tag]
+        As, bs, Vs = self.As[ind], self.bs[ind], self.Vs[ind]
 
         # Instantaneous inputs
         mus = np.matmul(Vs[None, ...], input[self.lags:, None, :self.M, None])[:, :, :, 0]
@@ -619,7 +624,8 @@ class HierarchicalRobustAutoRegressiveObservations(_Observations):
 
     def _compute_sigmas(self, data, input, mask, tag):
         T, D = data.shape
-        inv_sigmas = self.inv_sigmas[tag]
+        ind = self.tags_to_indices[tag]
+        inv_sigmas = self.inv_sigmas[ind]
         
         sigma_init = np.exp(self.inv_sigma_init) * np.ones((self.lags, self.K, self.D))
         sigma_ar = np.repeat(np.exp(inv_sigmas)[None, :, :], T-self.lags, axis=0)
@@ -627,24 +633,13 @@ class HierarchicalRobustAutoRegressiveObservations(_Observations):
         assert sigmas.shape == (T, self.K, D)
         return sigmas
 
-    # def log_likelihoods(self, data, input, mask, tag):
-    #     D = self.D
-    #     mus = self._compute_mus(data, input, mask, tag)
-    #     sigmas = self._compute_sigmas(data, input, mask, tag)
-    #     nus = np.exp(self.inv_nus)[tag]
-
-    #     resid = data[:, None, :] - mus
-    #     z = resid / sigmas
-    #     return -0.5 * (nus + D) * np.log(1.0 + (resid * z).sum(axis=2) / nus) + \
-    #         gammaln((nus + D) / 2.0) - gammaln(nus / 2.0) - D / 2.0 * np.log(nus) \
-    #         -D / 2.0 * np.log(np.pi) - 0.5 * np.sum(np.log(sigmas), axis=-1)
-
     def log_likelihoods(self, data, input, mask, tag):
         D = self.D
-        mus = self._compute_mus(data, input, mask, tag)
-        nus = np.exp(self.inv_nus)[tag]
+        ind = self.tags_to_indices[tag]
+        mus = self._compute_mus(data, input, mask, ind)
+        nus = np.exp(self.inv_nus)[ind]
         sigma_init = np.exp(self.inv_sigma_init)
-        sigma_ar = np.exp(self.inv_sigmas[tag])
+        sigma_ar = np.exp(self.inv_sigmas[ind])
         
         resid = data[:, None, :] - mus
 
@@ -666,7 +661,7 @@ class HierarchicalRobustAutoRegressiveObservations(_Observations):
         # Collect data for this dimension
         xs, ys, Ezs = [], [], []
         for (Ez, _), data, input, mask, tag in zip(expectations, datas, inputs, masks, tags):
-            if tag != g:
+            if self.tags_to_indices[tag] != g:
                 continue
 
             # Only use data if it is complete
@@ -682,10 +677,7 @@ class HierarchicalRobustAutoRegressiveObservations(_Observations):
         for itr in range(num_em_iters):
             # Compute expected precision for each data point given current parameters
             taus = []
-            # for data, input, mask, tag in zip(datas, inputs, masks, tags):
             for x, y in zip(xs, ys):
-                # mus = self._compute_mus(data, input, mask, tag)
-                # sigmas = self._compute_sigmas(data, input, mask, tag)
                 Afull = np.concatenate((self.As[g], self.Vs[g], self.bs[g, :, :, None]), axis=2)
                 mus = np.matmul(Afull[None, :, :, :], x[:, None, :, None])[:, :, :, 0]
                 sigmas = np.exp(self.inv_sigmas[g])
@@ -733,7 +725,7 @@ class HierarchicalRobustAutoRegressiveObservations(_Observations):
                         yhat = np.dot(x, muk)
                         sqerr += np.sum(Ez[:, k] * tau[:, k, d] * (y[:, d] - yhat)**2)
                         weight += np.sum(Ez[:, k])
-                    self.inv_sigmas[k, d] = np.log(sqerr / weight + 1e-16)
+                    self.inv_sigmas[g, k, d] = np.log(sqerr / weight + 1e-16)
 
     def _m_step_nu(self, g, expectations, datas, inputs, masks, tags, optimizer, **kwargs):
         """
@@ -755,14 +747,14 @@ class HierarchicalRobustAutoRegressiveObservations(_Observations):
         taus = []
         Ezs = []
         for (Ez, _), data, input, mask, tag in zip(expectations, datas, inputs, masks, tags):
-            if tag != g:
+            if self.tags_to_indices[tag] != g:
                 continue 
 
             # nu: (K,)  mus: (K, D)  sigmas: (K, D)  y: (T, D)  -> w: (T, K, D)
             mus = self._compute_mus(data, input, mask, g)
             sigmas = self._compute_sigmas(data, input, mask, g)
                 
-            nus = np.exp(self.inv_nus[:, None])
+            nus = np.exp(self.inv_nus[g, :, None])
             alpha = nus/2 + 1/2
             beta = nus/2 + 1/2 * (data[:, None, :] - mus)**2 / sigmas
             taus.append(npr.gamma(alpha, 1/beta))
@@ -789,8 +781,8 @@ class HierarchicalRobustAutoRegressiveObservations(_Observations):
         G, K, D, M = self.G, self.K, self.D, self.M
         for d in range(D):
             valid = [np.all(mask[:,d]) for mask in masks]
-            valid_tags = [tag for tag, valid in zip(tags, valid) if valid]
-            used = np.bincount(valid_tags, minlength=G) > 0
+            valid_indss = [self.tags_to_indices[tag] for tag, valid in zip(tags, valid) if valid]
+            used = np.bincount(valid_indss, minlength=G) > 0
             self.shared_As[:, d, :] = np.mean(self.As[used, :, d, :], axis=0)
             self.shared_Vs[:, d, :] = np.mean(self.Vs[used, :, d, :], axis=0)
             self.shared_bs[:, d] = np.mean(self.bs[used, :, d], axis=0)
@@ -813,11 +805,12 @@ class HierarchicalRobustAutoRegressiveObservations(_Observations):
             sigma_init = np.exp(self.inv_sigma_init) if with_noise else 0
             return self.mu_init + np.sqrt(sigma_init) * npr.randn(D)
         else:
-            mu = bs[tag, z].copy()
+            ind = self.tags_to_indices[tag]
+            mu = bs[ind, z].copy()
             for l in range(self.lags):
-                mu += As[tag, z][:,l*D:(l+1)*D].dot(xhist[-l-1])
+                mu += As[ind, z][:,l*D:(l+1)*D].dot(xhist[-l-1])
 
-            sigma = sigmas[tag, z] if with_noise else 0
+            sigma = sigmas[ind, z] if with_noise else 0
             return mu + np.sqrt(sigma) * npr.randn(D)
 
     def smooth(self, expectations, data, input, tag):
@@ -829,6 +822,3 @@ class HierarchicalRobustAutoRegressiveObservations(_Observations):
         mask = np.ones((T, self.D), dtype=bool) 
         mus = self._compute_mus(data, input, mask, tag)
         return (expectations[:, :, None] * mus).sum(1)
-
-    def m_step(self, expectations, datas, inputs, masks, tags, num_iter=1, **kwargs):
-        pass
