@@ -13,8 +13,7 @@ from ssm.observations import _Observations
 from ssm.util import random_rotation, ensure_args_are_lists, ensure_args_not_none, \
     logistic, logit, adam_with_convergence_check, one_hot
 from ssm.preprocessing import interpolate_data
-
-from zimmer.cstats import robust_ar_statistics
+from ssm.cstats import robust_ar_statistics
 
 class HierarchicalIndependentAutoRegressiveObservations(_Observations):
     def __init__(self, K, D, G=1, M=0, lags=1, eta=0.1):
