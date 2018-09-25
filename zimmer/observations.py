@@ -14,6 +14,7 @@ from ssm.util import random_rotation, ensure_args_are_lists, ensure_args_not_non
     logistic, logit, adam_with_convergence_check, one_hot
 from ssm.preprocessing import interpolate_data
 
+from zimmer.cstats import robust_ar_statistics
 
 class HierarchicalIndependentAutoRegressiveObservations(_Observations):
     def __init__(self, K, D, G=1, M=0, lags=1, eta=0.1):
@@ -690,13 +691,8 @@ class HierarchicalRobustAutoRegressiveObservations(_Observations):
             # Fit the weighted linear regressions for each K and D
             J = 1 / eta * np.tile((np.eye(D * lags + M + 1))[None, None, :, :], (K, D, 1, 1))
             h = 1 / eta * np.concatenate((self.shared_As, self.shared_Vs, self.shared_bs[:, :, None]), axis=2)
-
             for x, y, Ez, tau in zip(xs, ys, Ezs, taus):
-                scale = Ez[:, :, None] * tau
-                xx = x[:, None, :] * x[:, :, None]
-                xy = x[:, None, :] * y[:, :, None]
-                J += np.sum(scale[:, :, :, None, None] * xx[:, None, None, :, :], axis=0)
-                h += np.sum(scale[:, :, :, None] * xy[:, None, :, :], axis=0)
+                robust_ar_statistics(Ez, tau, x, y, J, h)
 
             mus = np.linalg.solve(J, h)
             self.As[g] = mus[:, :, :D*lags]
