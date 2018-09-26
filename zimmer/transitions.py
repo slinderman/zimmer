@@ -385,7 +385,7 @@ class ElaborateGroupRecurrentTransitions(_Transitions):
     Each group, however, is forced to share the input weights.
     """
     def __init__(self, K, D, tags=(None,), M=0, eta1=1e-4, eta2=1):
-        super(GroupRecurrentTransitions, self).__init__(K, D, M)
+        super(ElaborateGroupRecurrentTransitions, self).__init__(K, D, M)
 
         
         # Global recurrence parameters
