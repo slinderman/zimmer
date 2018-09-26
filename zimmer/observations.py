@@ -4,14 +4,14 @@ import warnings
 import autograd.numpy as np
 import autograd.numpy.random as npr
 from autograd.scipy.misc import logsumexp
-from autograd.scipy.special import gammaln
+from autograd.scipy.special import gammaln, digamma
 from autograd.scipy.stats import norm, gamma
 from autograd.misc.optimizers import sgd, adam
 from autograd import grad
 
 from ssm.observations import _Observations
 from ssm.util import random_rotation, ensure_args_are_lists, ensure_args_not_none, \
-    logistic, logit, adam_with_convergence_check, one_hot
+    logistic, logit, adam_with_convergence_check, one_hot, generalized_newton_studentst_dof
 from ssm.preprocessing import interpolate_data
 from ssm.cstats import robust_ar_statistics
 
@@ -654,7 +654,7 @@ class HierarchicalRobustAutoRegressiveObservations(_Observations):
 
         return np.vstack((lls_init, lls_ar))
 
-    def _m_step_ar(self, g, expectations, datas, inputs, masks, tags, num_em_iters):
+    def _m_step_ar(self, g, expectations, datas, inputs, masks, tags):
         K, D, M, lags, eta = self.K, self.D, self.M, self.lags, self.eta
 
         # Collect data for this group
@@ -673,134 +673,65 @@ class HierarchicalRobustAutoRegressiveObservations(_Observations):
             ys.append(data[self.lags:])
             Ezs.append(Ez[self.lags:])
 
-        for itr in range(num_em_iters):
-            # Compute expected precision for each data point given current parameters
-            taus = []
-            for x, y in zip(xs, ys):
-                Afull = np.concatenate((self.As[g], self.Vs[g], self.bs[g, :, :, None]), axis=2)
-                mus = np.matmul(Afull[None, :, :, :], x[:, None, :, None])[:, :, :, 0]
-                sigmas = np.exp(self.inv_sigmas[g])
-                nus = np.exp(self.inv_nus[g, :, None])
-
-                # nu: (K,)  mus: (T, K, D)  sigmas: (K, D)  y: (T, D)  -> tau: (T, K, D)
-                alpha = nus/2 + 1/2
-                beta = nus/2 + 1/2 * (y[:, None, :] - mus)**2 / sigmas
-                taus.append(alpha / beta)
-
-            # Fit the weighted linear regressions for each K and D
-            J = 1 / eta * np.tile((np.eye(D * lags + M + 1))[None, None, :, :], (K, D, 1, 1))
-            h = 1 / eta * np.concatenate((self.shared_As, self.shared_Vs, self.shared_bs[:, :, None]), axis=2)
-            for x, y, Ez, tau in zip(xs, ys, Ezs, taus):
-                robust_ar_statistics(Ez, tau, x, y, J, h)
-
-            mus = np.linalg.solve(J, h)
-            self.As[g] = mus[:, :, :D*lags]
-            self.Vs[g] = mus[:, :, D*lags:D*lags+M]
-            self.bs[g] = mus[:, :, -1]
-
-            # Fit the variance
-            sqerr = 0
-            weight = 0
-            for x, y, Ez, tau in zip(xs, ys, Ezs, taus):
-                yhat = np.matmul(x[None, :, :], np.swapaxes(mus, -1, -2))
-                sqerr += np.einsum('tk, tkd, ktd -> kd', Ez, tau, (y - yhat)**2)
-                weight += np.sum(Ez, axis=0)
-            self.inv_sigmas[g] = np.log(sqerr / weight[:, None] + 1e-16)
-
-    # def _m_step_nu(self, g, expectations, datas, inputs, masks, tags, optimizer, num_iters, **kwargs):
-    #     """
-    #     The shape parameter nu determines a gamma prior.  We have
-        
-    #         w_n ~ Gamma(nu/2, nu/2)
-    #         y_n ~ N(mu, sigma^2 / w_n)
-
-    #     To update w_n, we can samples w_n's from 
-    #     their conditional gamma distribution, as above, 
-    #     and then update nu_n to maximize their probability.
-    #     """
-    #     optimizer = dict(sgd=sgd, adam=adam)[optimizer]
-    #     K, D = self.K, self.D
-
-    #     # Sample the precisions w for each data point
-    #     taus = []
-    #     Ezs = []
-    #     for (Ez, _, _), data, input, mask, tag in zip(expectations, datas, inputs, masks, tags):
-    #         if self.tags_to_indices[tag] != g:
-    #             continue 
-
-    #         # nu: (K,)  mus: (K, D)  sigmas: (K, D)  y: (T, D)  -> w: (T, K, D)
-    #         mus = self._compute_mus(data, input, mask, tag)
-    #         sigmas = self._compute_sigmas(data, input, mask, tag)
-                
-    #         nus = np.exp(self.inv_nus[g, :, None])
-    #         alpha = nus/2 + 1/2
-    #         beta = nus/2 + 1/2 * (data[:, None, :] - mus)**2 / sigmas
-    #         taus.append(npr.gamma(alpha, 1/beta))
-
-    #         Ezs.append(Ez)
-
-    #     # Maximize the expected log probability of taus | nu
-    #     def _objective(inv_nus, itr):
-    #         nus = np.exp(inv_nus)[:, None]
-            
-    #         elp = 0
-    #         T = 0
-    #         for tau, Ez in zip(taus, Ezs):
-    #             lp = np.sum(nus/2 * np.log(nus/2) - gammaln(nus/2) + \
-    #                        (nus/2 - 1) * np.log(tau) - tau * nus / 2, axis=2)
-    #             elp += np.sum(Ez * lp)
-    #             T += Ez.shape[0]
-
-    #         return -elp / T
-
-    #     self.inv_nus[g] = optimizer(grad(_objective), self.inv_nus[g], **kwargs)
-
-    def _m_step_all_nu(self, expectations, datas, inputs, masks, tags, optimizer, num_iters, **kwargs):
-        """
-        The shape parameter nu determines a gamma prior.  We have
-        
-            w_n ~ Gamma(nu/2, nu/2)
-            y_n ~ N(mu, sigma^2 / w_n)
-
-        To update w_n, we can samples w_n's from 
-        their conditional gamma distribution, as above, 
-        and then update nu_n to maximize their probability.
-        """
-        optimizer = dict(sgd=sgd, adam=adam)[optimizer]
-        K, D = self.K, self.D
-
-        # Sample the precisions w for each data point
+        # Compute expected precision for each data point given current parameters
         taus = []
-        Ezs = []
-        for (Ez, _, _), data, input, mask, tag in zip(expectations, datas, inputs, masks, tags):
-            g = self.tags_to_indices[tag]
+        for x, y in zip(xs, ys):
+            Afull = np.concatenate((self.As[g], self.Vs[g], self.bs[g, :, :, None]), axis=2)
+            mus = np.matmul(Afull[None, :, :, :], x[:, None, :, None])[:, :, :, 0]
+            sigmas = np.exp(self.inv_sigmas[g])
+            nus = np.exp(self.inv_nus[g, :, None])
+
+            # nu: (K,)  mus: (T, K, D)  sigmas: (K, D)  y: (T, D)  -> tau: (T, K, D)
+            alpha = nus/2 + 1/2
+            beta = nus/2 + 1/2 * (y[:, None, :] - mus)**2 / sigmas
+            taus.append(alpha / beta)
+
+        # Fit the weighted linear regressions for each K and D
+        J = 1 / eta * np.tile((np.eye(D * lags + M + 1))[None, None, :, :], (K, D, 1, 1))
+        h = 1 / eta * np.concatenate((self.shared_As, self.shared_Vs, self.shared_bs[:, :, None]), axis=2)
+        for x, y, Ez, tau in zip(xs, ys, Ezs, taus):
+            robust_ar_statistics(Ez, tau, x, y, J, h)
+
+        mus = np.linalg.solve(J, h)
+        self.As[g] = mus[:, :, :D*lags]
+        self.Vs[g] = mus[:, :, D*lags:D*lags+M]
+        self.bs[g] = mus[:, :, -1]
+
+        # Fit the variance
+        sqerr = 0
+        weight = 0
+        for x, y, Ez, tau in zip(xs, ys, Ezs, taus):
+            yhat = np.matmul(x[None, :, :], np.swapaxes(mus, -1, -2))
+            sqerr += np.einsum('tk, tkd, ktd -> kd', Ez, tau, (y - yhat)**2)
+            weight += np.sum(Ez, axis=0)
+        self.inv_sigmas[g] = np.log(sqerr / weight[:, None] + 1e-16)
+
+    def _m_step_nu(self, g, expectations, datas, inputs, masks, tags):
+        K, D = self.K, self.D
+        E_taus = np.zeros(K)
+        E_logtaus = np.zeros(K)
+        weights = np.zeros(K)
+        for (Ez, _, _,), data, input, mask, tag in zip(expectations, datas, inputs, masks, tags):
+            if self.tags_to_indices[tag] != g:
+                continue 
+
+            # nu: (K,)  mus: (K, D)  sigmas: (K, D)  y: (T, D)  -> w: (T, K, D)
             mus = self._compute_mus(data, input, mask, tag)
             sigmas = self._compute_sigmas(data, input, mask, tag)
-            
-            # nu: (K, 1)  mus: (T, K, D)  sigmas: (T, K, D)  y: (T, D)  -> taus: (T, K, D)    
             nus = np.exp(self.inv_nus[g, :, None])
+
             alpha = nus/2 + 1/2
             beta = nus/2 + 1/2 * (data[:, None, :] - mus)**2 / sigmas
-            taus.append(npr.gamma(alpha, 1/beta))
-            Ezs.append(Ez)
-
-        # Maximize the expected log probability of taus | nu
-        def _objective(inv_nus, itr):
-            nus = np.exp(inv_nus)[:, :, None]
             
-            elp = 0
-            T = 0
-            for tau, Ez, tag in zip(taus, Ezs, tags):
-                g = self.tags_to_indices[tag]
-                lp = np.sum(nus[g]/2 * np.log(nus[g]/2) - gammaln(nus[g]/2) + \
-                           (nus[g]/2 - 1) * np.log(tau) - tau * nus[g] / 2, axis=2)
-                elp += np.sum(Ez * lp)
-                T += Ez.shape[0]
+            E_taus += np.sum(Ez[:, :, None] * alpha / beta, axis=(0, 2))
+            E_logtaus += np.sum(Ez[:, :, None] * (digamma(alpha) - np.log(beta)), axis=(0, 2))
+            weights += np.sum(Ez, axis=0) * D
 
-            return -elp / T
+        E_taus /= weights
+        E_logtaus /= weights
 
-        self.inv_nus = optimizer(grad(_objective), self.inv_nus, num_iters=num_iters, **kwargs)
-
+        for k in range(K):
+            self.inv_nus[g, k] = np.log(generalized_newton_studentst_dof(E_taus[k], E_logtaus[k]) + 1e-16)
 
     def _m_step_shared(self, expectations, datas, inputs, masks, tags):
         G, K, D, M = self.G, self.K, self.D, self.M
@@ -818,13 +749,9 @@ class HierarchicalRobustAutoRegressiveObservations(_Observations):
         for itr in range(num_iter):
             # Update the per-group weights
             for g in range(G):
-                self._m_step_ar(g, expectations, datas, inputs, masks, tags, num_em_iters=1)
-
-            # for g in range(G):
-            #     print("nu", g)
-            #     self._m_step_nu(g, expectations, datas, inputs, masks, tags, "adam", num_iters=10)
-            self._m_step_all_nu(expectations, datas, inputs, masks, tags, "adam", num_iters=10)
-
+                self._m_step_ar(g, expectations, datas, inputs, masks, tags)
+                self._m_step_nu(g, expectations, datas, inputs, masks, tags)
+            
             # Update the shared weights
             self._m_step_shared(expectations, datas, inputs, masks, tags)
 
