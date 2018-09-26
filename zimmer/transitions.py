@@ -402,8 +402,8 @@ class ElaborateGroupRecurrentTransitions(_Transitions):
         self.T = len(tags)
         assert self.T > 0
 
-        self.log_Ps = self.shared_log_Ps + np.sqrt(eta) * npr.randn(self.T, K, K)
-        self.Rs = self.shared_Rs + np.sqrt(eta) * npr.randn(self.T, K, D)
+        self.log_Ps = self.shared_log_Ps + np.sqrt(eta1) * npr.randn(self.T, K, K)
+        self.Rs = self.shared_Rs + np.sqrt(eta1) * npr.randn(self.T, K, D)
 
         # Per-group AR parameters
         self.groups = []
@@ -414,7 +414,7 @@ class ElaborateGroupRecurrentTransitions(_Transitions):
         self.G = len(self.groups)
         assert self.G > 0
 
-        self.Ws = self.shared_Ws + np.sqrt(eta) * npr.randn(self.G, K, M)
+        self.Ws = self.shared_Ws + np.sqrt(eta2) * npr.randn(self.G, K, M)
         
     @property
     def params(self):
