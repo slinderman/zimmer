@@ -21,17 +21,17 @@ class HierarchicalStationaryTransitions(_Transitions):
     next state.  Get rid of the transition matrix and replace it
     with a constant bias r.
     """
-    def __init__(self, K, D, G=1, M=0, eta=0.1):
+    def __init__(self, K, D, tags=(None,), M=0, eta=0.1):
         super(HierarchicalStationaryTransitions, self).__init__(K, D, M)
-
         
-        # Global recurrence parameters
-        self.shared_log_Ps = npr.randn(K, K)
-
         # Per-group parameters
-        self.G = G
+        self.tags = tags
+        self.tags_to_indices = dict([(tag, i) for i, tag in enumerate(tags)])
+        self.G = len(tags)
+        assert self.G > 0
+        
         self.eta = eta
-        self.log_Ps = self.shared_log_Ps + np.sqrt(eta) * npr.randn(G, K, K)
+        self.log_Ps = self.shared_log_Ps + np.sqrt(eta) * npr.randn(self.G, K, K)
         
     @property
     def params(self):
@@ -62,8 +62,9 @@ class HierarchicalStationaryTransitions(_Transitions):
         return lp
 
     def log_transition_matrices(self, data, input, mask, tag):
+        g = self.tags_to_indices[tag]
         T, D = data.shape
-        log_Ps = np.tile(self.log_Ps[tag][None, :, :], (T-1, 1, 1)) 
+        log_Ps = np.tile(self.log_Ps[g][None, :, :], (T-1, 1, 1)) 
         return log_Ps - logsumexp(log_Ps, axis=2, keepdims=True)
 
 
