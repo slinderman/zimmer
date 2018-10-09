@@ -119,7 +119,7 @@ def plot_2d_continuous_states(x, z,
     for cp_start, cp_stop in zip(cps[:-1], cps[1:]):
         ax.plot(x[cp_start:cp_stop + 1, inds[0]],
                 x[cp_start:cp_stop + 1, inds[1]],
-                 '-', color=colors[z[cp_start]])
+                 '-', color=colors[z[cp_start] % len(colors)])
 
     if xlims is not None:
         ax.set_xlim(xlims)

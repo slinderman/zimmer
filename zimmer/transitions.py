@@ -408,7 +408,7 @@ class ElaborateGroupRecurrentTransitions(_Transitions):
         # Per-group AR parameters
         self.groups = []
         for (i, group) in tags:
-            if group not in groups:
+            if group not in self.groups:
                 self.groups.append(group)
         self.groups_to_indices = dict([(group, i) for i, group in enumerate(self.groups)])
         self.G = len(self.groups)
