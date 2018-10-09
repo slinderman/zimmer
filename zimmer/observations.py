@@ -43,11 +43,11 @@ class HierarchicalAutoRegressiveObservations(_Observations):
         self.eta = eta
         self.As = .95 * np.array([
                 [np.column_stack([random_rotation(D), np.zeros((D, (lags-1) * D))]) for _ in range(K)]
-                for _ in range(G)]
+                for _ in range(self.G)]
             )
-        self.bs = npr.randn(G, K, D)
-        self.Vs = npr.randn(G, K, D, M)
-        self.inv_sigmas = -4 + npr.randn(G, K, D)
+        self.bs = npr.randn(self.G, K, D)
+        self.Vs = npr.randn(self.G, K, D, M)
+        self.inv_sigmas = -4 + npr.randn(self.G, K, D)
 
     @property
     def params(self):
