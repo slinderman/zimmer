@@ -24,6 +24,9 @@ class HierarchicalStationaryTransitions(_Transitions):
     def __init__(self, K, D, tags=(None,), M=0, eta=0.1):
         super(HierarchicalStationaryTransitions, self).__init__(K, D, M)
         
+        # Global recurrence parameters
+        self.shared_log_Ps = npr.randn(K, K)
+        
         # Per-group parameters
         self.tags = tags
         self.tags_to_indices = dict([(tag, i) for i, tag in enumerate(tags)])
