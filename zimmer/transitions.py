@@ -5,13 +5,12 @@ import autograd.numpy as np
 import autograd.numpy.random as npr
 from autograd.scipy.misc import logsumexp
 from autograd.scipy.special import gammaln
-from autograd.scipy.stats import norm, gamma
-from autograd.misc.optimizers import sgd, adam
+from autograd.scipy.stats import norm, gamma, dirichlet
 from autograd import grad
 
 from ssm.transitions import _Transitions
 from ssm.util import random_rotation, ensure_args_are_lists, ensure_args_not_none, \
-    logistic, logit, adam_with_convergence_check, one_hot, relu
+    logistic, logit, one_hot, relu
 from ssm.preprocessing import interpolate_data
 
 
@@ -77,10 +76,13 @@ class HierarchicalRecurrentTransitions(_Transitions):
     next state.  Get rid of the transition matrix and replace it
     with a constant bias r.
     """
-    def __init__(self, K, D, tags=(None,), M=0, eta=0.1):
+    def __init__(self, K, D, tags=(None,), M=0, eta=0.1, alpha=1.0, kappa=0.0):
         super(HierarchicalRecurrentTransitions, self).__init__(K, D, M)
 
-        
+        # Prior on log Ps
+        self.alpha = alpha
+        self.kappa = kappa
+
         # Global recurrence parameters
         self.shared_log_Ps = npr.randn(K, K)
         self.shared_Ws = npr.randn(K, M)
@@ -133,6 +135,14 @@ class HierarchicalRecurrentTransitions(_Transitions):
                         
     def log_prior(self):
         lp = 0
+        
+        # Log prior on the shared transition matrix
+        shared_Ps = np.exp(self.shared_log_Ps - logsumexp(self.shared_log_Ps, axis=1, keepdims=True))
+        for k in range(self.K):
+            alpha = self.alpha * np.ones(self.K) + self.kappa * (np.arange(self.K) == k)
+            lp += dirichlet.logpdf(shared_Ps[k], alpha)
+
+        # Penalty on difference from shared matrix
         for g in range(self.G):
             lp += np.sum(norm.logpdf(self.log_Ps[g], self.shared_log_Ps, np.sqrt(self.eta)))
             lp += np.sum(norm.logpdf(self.Ws[g], self.shared_Ws, np.sqrt(self.eta)))
