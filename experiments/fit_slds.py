@@ -190,30 +190,14 @@ def plot_latent_trajectories(figures_dir, xs, zs, lim=(-3, 3)):
 
     plt.figure(figsize=(12, 3))
     for w, (x, z) in enumerate(zip(xs, zs)):
-        ax = plt.subplot(1, W, w + 1)
+        ax = plt.subplot(1, len(xs), w + 1)
         zplt.plot_2d_continuous_states(
-            x, z, xlims=(-lim, lim), ylims=(-lim, lim), inds=(0, 1), ax=ax)
+            x, z, xlims=lim, ylims=lim, inds=(0, 1), ax=ax)
         plt.ylabel("PC 2" if w == 0 else "")
         plt.xlabel("PC 1")
         plt.title("worm {}".format(w + 1))
         plt.savefig(
             os.path.join(figures_dir, "continuous_traj_{}.png".format(w + 1)), dpi=300)
-
-    # plt.figure(figsize=(12, 3))
-    # for w, (x, z) in enumerate(zip(xs, z_infs)):
-    #     ax = plt.subplot(1, W, w+1)
-    #     zplt.plot_2d_continuous_states(x, z, xlims=(-lim, lim), ylims=(-lim, lim), inds=(0, 2), ax=ax)
-    #     plt.ylabel("PC 3" if w == 0 else "")
-    #     plt.xlabel("PC 1")
-
-    # if D > 3:
-    #     plt.figure(figsize=(12, 3))
-    #     for w, (x, z) in enumerate(zip(xs, zs)):    
-    #         ax = plt.subplot(1, W, w+1)
-    #         zplt.plot_2d_continuous_states(x, z, xlims=(-lim, lim), ylims=(-lim, lim), inds=(0, 3), ax=ax)
-    #         plt.ylabel("PC 4" if w == 0 else "")
-    #         plt.xlabel("PC 1")    
-    #         plt.title("worm {}".format(w+1))
 
 
 def plot_discrete_states(K, zs, ztrues):
@@ -367,7 +351,8 @@ if __name__ == "__main__":
     # Fit the model and evaluate it
     q_train, train_elbos = cached(experiment_dir, "train")(train_slds)(slds, train_datas)
     q_val, val_elbos = cached(experiment_dir, "validate")(validate_slds)(slds, val_datas)
-    q_full, full_elbos, xs, zs = cached(experiment_dir, "test")(test_slds)(slds, test_datas)
+    q_full, full_elbos, xs, zs = cached(experiment_dir, "test")(test_slds)(slds, full_datas)
 
     # Plot some basic results
     plot_elbos(experiment_dir, train_elbos, val_elbos, full_elbos)
+    plot_latent_trajectories(experiment_dir, xs, zs)
