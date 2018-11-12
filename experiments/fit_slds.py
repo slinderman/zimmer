@@ -4,7 +4,7 @@ import pickle
 import argparse
 import numpy as np
 import matplotlib.pyplot as plt
-import zimmer.plotting as zplt
+#import zimmer.plotting as zplt
 from zimmer.observations import HierarchicalAutoRegressiveObservations,  \
     HierarchicalRobustAutoRegressiveObservations
 from zimmer.transitions import HierarchicalRecurrentTransitions, \
@@ -110,7 +110,7 @@ def train_slds(rslds, train_datas):
         initialize=False,
         num_iters=args.N_train_iter)
 
-    return rslds, q_train, train_elbos
+    return q_train, train_elbos
 
 
 def validate_slds(rslds, val_datas):
