@@ -3,8 +3,9 @@ import copy
 import pickle
 import argparse
 import numpy as np
+import matplotlib
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-#import zimmer.plotting as zplt
 from zimmer.observations import HierarchicalAutoRegressiveObservations,  \
     HierarchicalRobustAutoRegressiveObservations
 from zimmer.transitions import HierarchicalRecurrentTransitions, \
@@ -33,9 +34,11 @@ parser.add_argument('D', type=int,
 parser.add_argument('--no_hierarchical', dest="hierarchical", 
                     action="store_false", default=True,
                     help='do not fit a hierarchical model')
-parser.add_argument('--no_recurrent', dest="recurrent", 
-                    action="store_false", default=True,
-                    help='do not fit recurrent model')
+parser.add_argument('--transitions', dest="transitions", default="recurrent",
+                    help='type of transition model')
+# parser.add_argument('--no_recurrent', dest="recurrent", 
+#                     action="store_false", default=True,
+#                     help='do not fit recurrent model')
 parser.add_argument('--no_robust', dest="robust", 
                     action="store_false", default=True,
                     help='do not fit robust model')
@@ -61,25 +64,34 @@ def make_slds(N, M, tags):
     # Make the SLDS
     initial_state = InitialStateDistribution(K, D, M)
     if args.hierarchical:
-        if args.recurrent:
-            # transitions = HierarchicalRecurrentTransitions(K, D, tags, eta=eta)
+        # Hierarchical transition model
+        if args.transitions.lower() == "recurrent":
+            transitions = HierarchicalRecurrentTransitions(K, D, tags, eta=eta)
+        elif args.transitions.lower() == "rbf":
             transitions = HierarchicalRBFRecurrentTransitions(K, D, tags, eta=eta)
-        else:
+        elif args.transitions.lower() == "standard":
             transitions = HierarchicalStationaryTransitions(K, D, tags, eta=eta)
+        else:
+            raise Exception("Invalid transition model: {}".format(args.transitions))
 
+        # Hierarchicalynamcis model
         if args.robust:
             dynamics = HierarchicalRobustAutoRegressiveObservations(K, D, tags, M, eta=eta)
         else:
             dynamics = HierarchicalAutoRegressiveObservations(K, D, tags, M, eta=eta)
 
     else:
-        # Not hierarchical
-        if args.recurrent:
-            # transitions = RecurrentTransitions(K, D)
+        # Shared transitions
+        if args.transitions.lower() == "recurrent":
+            transitions = RecurrentTransitions(K, D)
+        elif args.transitions.lower() == "rbf":
             transitions = RBFRecurrentTransitions(K, D)
-        else:
+        elif args.transitions.lower() == "standard":
             transitions = StationaryTransitions(K, D)
+        else:
+            raise Exception("Invalid transition model: {}".format(args.transitions))
 
+        # Shared dynamics
         if args.robust:
             dynamics = RobustAutoRegressiveObservations(K, D)
         else:
@@ -327,7 +339,7 @@ def simulate_rslds(rslds, pad=3, noise_reduction=-4):
 if __name__ == "__main__":
     experiment_name = "{}{}{}SLDS_K{}D{}eta{:.0e}".format(
         'h' if args.hierarchical else '',
-        'r' if args.recurrent else '',
+        'r' if args.transitions == "recurrent" else 'rbf' if args.transitions == "rbf" else '',
         'b' if args.robust else '',
         args.K, args.D, args.eta
         )
