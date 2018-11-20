@@ -476,7 +476,7 @@ class HierarchicalRobustAutoRegressiveObservations(_Observations):
         for x, y, Ez, tau in zip(xs, ys, Ezs, taus):
             yhat = np.matmul(x[None, :, :], np.swapaxes(mus, -1, -2))
             sqerr += np.einsum('tk, tkd, ktd -> kd', Ez, tau, (y - yhat)**2)
-            weight += np.sum(Ez, axis=0)
+            weight += np.sum(Ez, axis=0) + 1e-16
         self.inv_sigmas[g] = np.log(sqerr / weight[:, None] + 1e-16)
 
     def _m_step_nu(self, g, expectations, datas, inputs, masks, tags):
