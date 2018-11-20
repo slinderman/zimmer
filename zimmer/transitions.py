@@ -10,7 +10,7 @@ from autograd import grad
 
 from ssm.transitions import _Transitions
 from ssm.util import random_rotation, ensure_args_are_lists, ensure_args_not_none, \
-    logistic, logit, one_hot, relu
+    logistic, logit, one_hot, relu, batch_mahalanobis
 from ssm.preprocessing import interpolate_data
 
 
@@ -221,6 +221,132 @@ class HierarchicalRecurrentOnlyTransitions(_Transitions):
         log_Ps = log_Ps + self.r[tag]                                       # bias
         log_Ps = np.tile(log_Ps, (1, self.K, 1))                            # expand
         return log_Ps - logsumexp(log_Ps, axis=2, keepdims=True)            # normalize
+
+
+class HierarchicalRBFRecurrentTransitions(_Transitions):
+    def __init__(self, K, D, tags=(None,), M=0, eta=0.1, alpha=1.0, kappa=0.0):
+        super(HierarchicalRBFRecurrentTransitions, self).__init__(K, D, M)
+
+        # Prior on log Ps
+        self.alpha = alpha
+        self.kappa = kappa
+
+        # Global recurrence parameters
+        self.shared_log_Ps = npr.randn(K, K)
+        self.shared_mus = npr.randn(K, D)
+        self._shared_sqrt_Sigmas = npr.randn(K, D, D)
+        self.shared_Ws = npr.randn(K, M)
+        
+        # Per-group parameters
+        self.tags = tags
+        self.tags_to_indices = dict([(tag, i) for i, tag in enumerate(tags)])
+        self.G = len(tags)
+        assert self.G > 0
+        
+        self.eta = eta
+        self.log_Ps = self.shared_log_Ps + np.sqrt(eta) * npr.randn(self.G, K, K)
+        self.mus = self.shared_mus + np.sqrt(eta) * npr.randn(self.G, K, D)
+        self._sqrt_Sigmas = self._shared_sqrt_Sigmas + np.sqrt(eta) * npr.randn(self.G, K, D, D)
+        self.Ws = self.shared_Ws + np.sqrt(eta) * npr.randn(self.G, K, M)
+        
+    @property
+    def params(self):
+        return self.shared_log_Ps, self.shared_mus, self._shared_sqrt_Sigmas, self.shared_Ws, \
+            self.log_Ps, self.mus, self._sqrt_Sigmas, self.Ws
+    
+    @params.setter
+    def params(self, value):
+        self.shared_log_Ps, self.shared_mus, self._shared_sqrt_Sigmas, self.shared_Ws, \
+            self.log_Ps, self.mus, self._sqrt_Sigmas, self.Ws = value
+
+    @property
+    def Sigmas(self):
+        return np.matmul(self._sqrt_Sigmas, np.swapaxes(self._sqrt_Sigmas, -1, -2))
+
+    def initialize(self, datas, inputs, masks, tags):
+        # Fit a GMM to the data to set the means and covariances
+        from sklearn.mixture import GaussianMixture
+        gmm = GaussianMixture(self.K, covariance_type="full")
+        gmm.fit(np.vstack(datas))
+        self.shared_mus = gmm.means_
+        self._shared_sqrt_Sigmas = np.linalg.cholesky(gmm.covariances_)
+        self.mus = np.repeat(self.shared_mus[None, ...], self.G, axis=0)
+        self._sqrt_Sigmas = np.repeat(self._shared_sqrt_Sigmas[None, ...], self.G, axis=0)
+        
+    def permute(self, perm):
+        """
+        Permute the discrete latent states.
+        """
+        self.log_Ps = self.log_Ps[np.ix_(perm, perm)]
+        self.mus = self.mus[perm]
+        self.sqrt_Sigmas = self.sqrt_Sigmas[perm]
+        self.Ws = self.Ws[perm]
+
+    def permute(self, perm):
+        self.shared_Ws = self.shared_Ws[perm]
+        self.shared_mus = self.shared_mus[perm]
+        self._shared_sqrt_Sigmas = self._shared_sqrt_Sigmas[perm]
+
+        for g in range(self.G):
+            self.mus[g] = self.mus[g, perm]
+            self._sqrt_Sigmas[g] = self._sqrt_Sigmas[g, perm]
+            self.Ws[g] = self.Ws[g, perm]
+
+    def initialize_from_standard(self, tr):
+        # Copy the transition parameters
+        self.shared_log_Ps = tr.log_Ps.copy()
+        self.shared_Ws = tr.Ws.copy()
+        self.shared_Rs = tr.Rs.copy()
+
+        for g in range(self.G):
+            self.log_Ps[g] = tr.log_Ps.copy()
+            self.Ws[g] = tr.Ws.copy()
+            self.Rs[g] = tr.Rs.copy()
+                        
+    def log_prior(self):
+        lp = 0
+        
+        # Log prior on the shared transition matrix
+        shared_Ps = np.exp(self.shared_log_Ps - logsumexp(self.shared_log_Ps, axis=1, keepdims=True))
+        for k in range(self.K):
+            alpha = self.alpha * np.ones(self.K) + self.kappa * (np.arange(self.K) == k)
+            lp += dirichlet.logpdf(shared_Ps[k], alpha)
+
+        # Penalty on difference from shared matrix
+        for g in range(self.G):
+            lp += np.sum(norm.logpdf(self.log_Ps[g], self.shared_log_Ps, np.sqrt(self.eta)))
+            lp += np.sum(norm.logpdf(self.mus[g], self.shared_mus, np.sqrt(self.eta)))
+            lp += np.sum(norm.logpdf(self._sqrt_Sigmas[g], self._shared_sqrt_Sigmas, np.sqrt(self.eta)))
+            lp += np.sum(norm.logpdf(self.Ws[g], self.shared_Ws, np.sqrt(self.eta)))
+        return lp
+
+    def log_transition_matrices(self, data, input, mask, tag):
+        K, D = self.K, self.D
+        T = data.shape[0]
+        assert np.all(mask), "Recurrent models require that all data are present."
+        assert input.shape[0] == T
+
+        g = self.tags_to_indices[tag]
+        
+        # Previous state effect
+        log_Ps = np.tile(self.log_Ps[g, None, :, :], (T-1, 1, 1)) 
+
+        # RBF function, quadratic term
+        Ls = np.linalg.cholesky(self.Sigmas[g])                          # (K, D, D)
+        diff = data[:-1, None, :] - self.mus[g]                          # (T-1, K, D)
+        M = batch_mahalanobis(Ls, diff)                                  # (T-1, K)
+        log_Ps = log_Ps + -0.5 * M[:, None, :]
+
+        # RBF function, Gaussian normalizer
+        # L_diag = np.reshape(Ls, Ls.shape[:-2] + (-1,))[..., ::D + 1]
+        L_diag = np.array([np.diag(L) for L in Ls])                      # (K, D)
+        half_log_det = np.sum(np.log(abs(L_diag)), axis=-1)              # (K,)
+        log_normalizer = -0.5 * D * np.log(2 * np.pi) - half_log_det     # (K,)
+        log_Ps = log_Ps + log_normalizer[None, None, :]
+
+        # Input effect
+        log_Ps = log_Ps + np.dot(input[1:], self.Ws[g].T)[:, None, :]
+        return log_Ps - logsumexp(log_Ps, axis=2, keepdims=True)
 
 
 class HierarchicalNeuralNetworkRecurrentTransitions(_Transitions):

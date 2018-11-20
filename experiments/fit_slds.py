@@ -8,11 +8,11 @@ import matplotlib.pyplot as plt
 from zimmer.observations import HierarchicalAutoRegressiveObservations,  \
     HierarchicalRobustAutoRegressiveObservations
 from zimmer.transitions import HierarchicalRecurrentTransitions, \
-    HierarchicalStationaryTransitions
+    HierarchicalStationaryTransitions, HierarchicalRBFRecurrentTransitions
 from zimmer.util import cached
 from ssm.core import _SwitchingLDS
 from ssm.init_state_distns import InitialStateDistribution
-from ssm.transitions import RecurrentTransitions, StationaryTransitions
+from ssm.transitions import RecurrentTransitions, RBFRecurrentTransitions, StationaryTransitions
 from ssm.observations import AutoRegressiveObservations, \
     RobustAutoRegressiveObservations
 from ssm.emissions import GaussianEmissions
@@ -62,7 +62,8 @@ def make_slds(N, M, tags):
     initial_state = InitialStateDistribution(K, D, M)
     if args.hierarchical:
         if args.recurrent:
-            transitions = HierarchicalRecurrentTransitions(K, D, tags, eta=eta)
+            # transitions = HierarchicalRecurrentTransitions(K, D, tags, eta=eta)
+            transitions = HierarchicalRBFRecurrentTransitions(K, D, tags, eta=eta)
         else:
             transitions = HierarchicalStationaryTransitions(K, D, tags, eta=eta)
 
@@ -74,7 +75,8 @@ def make_slds(N, M, tags):
     else:
         # Not hierarchical
         if args.recurrent:
-            transitions = RecurrentTransitions(K, D)
+            # transitions = RecurrentTransitions(K, D)
+            transitions = RBFRecurrentTransitions(K, D)
         else:
             transitions = StationaryTransitions(K, D)
 
