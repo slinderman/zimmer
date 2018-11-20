@@ -1,4 +1,5 @@
 import os
+import sys
 import copy
 import pickle
 import argparse
@@ -144,8 +145,10 @@ def train_slds(rslds, train_datas, chunk_size=500):
     # Train in chunks so that we don't lose everything if job halts
     train_elbos = []
     for chunk, start in enumerate(np.arange(0, args.N_train_iter, chunk_size)):
-        _train = cached(experiment_dir, "_train_{}".format(chunk))(_train_slds_chunk)
         this_chunk_size = min(chunk_size, args.N_train_iter - start)
+        print("Train chunk: {} -- {}".format(start, start + this_chunk_size))
+        
+        _train = cached(experiment_dir, "_train_{}".format(chunk))(_train_slds_chunk)
         rslds, q_train, chunk_elbos = _train(rslds, train_datas, this_chunk_size)
         train_elbos.append(chunk_elbos)
     train_elbos = np.concatenate(train_elbos)
