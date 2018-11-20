@@ -1,0 +1,17 @@
+#!/bin/sh
+#
+# Fit SLDS to Kato et all dataset
+#
+# Replace <ACCOUNT> with your account name before submitting.
+#
+#SBATCH --account=dsi            # The account name for the job.
+#SBATCH --job-name=kato          # The job name.
+#SBATCH --time=12:00:00          # The time the job will take to run.
+#SBATCH --exclusive
+#SBATCH -N 1 
+echo "Fit the Kato dataset with " $SLURM_ARRAY_TASK_ID " states and D = " $1 " dims"
+source activate zimmer
+cd ~/zimmer
+python experiments/fit_slds.py kato $SLURM_ARRAY_TASK_ID $1 --results_dir=/rigel/dsi/users/swl2133/zimmer/results/kato/2018-11-08
+ 
+# End of script

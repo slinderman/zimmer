@@ -6,6 +6,7 @@ import numpy as np
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+import zimmer.plotting as zplt
 from zimmer.observations import HierarchicalAutoRegressiveObservations,  \
     HierarchicalRobustAutoRegressiveObservations
 from zimmer.transitions import HierarchicalRecurrentTransitions, \
@@ -20,6 +21,11 @@ from ssm.emissions import GaussianEmissions
 from ssm.variational import SLDSTriDiagVariationalPosterior
 from ssm.util import find_permutation
 
+# You may want to limit the number of threads used by numpy
+# To do that, set the following:
+# export MKL_NUM_THREADS=1
+# export NUMEXPR_NUM_THREADS=1
+# export OMP_NUM_THREADS=1
 
 np.random.seed(1234)
 
@@ -50,8 +56,8 @@ parser.add_argument('--N_train_iter', type=int, default=5000,
                     help='number of training VI iterations')
 parser.add_argument('--N_val_iter', type=int, default=1000,
                     help='number of validation VI iterations')
-parser.add_argument('--N_test_iter', type=int, default=1000,
-                    help='number of test VI iterations')
+parser.add_argument('--N_full_iter', type=int, default=1000,
+                    help='number of VI iterations on the full data')
 parser.add_argument('-d', '--data_dir', default=os.path.join("data", "processed"),
                     help='where the processed data is stored')
 parser.add_argument('-o', '--results_dir', default='results',
@@ -146,7 +152,7 @@ def validate_slds(rslds, val_datas):
     return q_val, val_elbos
 
 
-def test_slds(rslds, full_datas):
+def full_slds(rslds, full_datas):
 
     q_full = SLDSTriDiagVariationalPosterior(
         rslds,
@@ -159,7 +165,7 @@ def test_slds(rslds, full_datas):
         datas=[data['y'] for data in full_datas],
         masks=[data['m'] for data in full_datas],
         tags=[data['tag'] for data in full_datas],
-        num_iters=args.N_test_iter)
+        num_iters=args.N_full_iter)
 
     # Find the most likely discrete states that are
     # best aligned with the Kato states
@@ -365,7 +371,7 @@ if __name__ == "__main__":
     # Fit the model and evaluate it
     q_train, train_elbos = cached(experiment_dir, "train")(train_slds)(slds, train_datas)
     q_val, val_elbos = cached(experiment_dir, "validate")(validate_slds)(slds, val_datas)
-    q_full, full_elbos, xs, zs = cached(experiment_dir, "test")(test_slds)(slds, full_datas)
+    q_full, full_elbos, xs, zs = cached(experiment_dir, "full")(full_slds)(slds, full_datas)
 
     # Plot some basic results
     plot_elbos(experiment_dir, train_elbos, val_elbos, full_elbos)
