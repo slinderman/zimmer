@@ -107,8 +107,7 @@ def make_slds(N, M, tags):
     return _SwitchingLDS(N, K, D, M, initial_state, transitions, dynamics, emissions)
 
 
-def train_slds(rslds, train_datas):
-
+def _initialize_slds(rslds, train_datas):
     # Initialize with the training data
     rslds.initialize([data['y'] for data in train_datas],
                      masks=[data['m'] for data in train_datas],
@@ -121,6 +120,10 @@ def train_slds(rslds, train_datas):
         masks=[data['m'] for data in train_datas],
         tags=[data['tag'] for data in train_datas])
 
+    return rslds, q_train    
+
+def _train_slds_chunk(rslds, q_train, train_datas, N_iter):
+
     train_elbos = rslds.fit(
         q_train,
         datas=[data['y'] for data in train_datas],
@@ -128,9 +131,26 @@ def train_slds(rslds, train_datas):
         tags=[data['tag'] for data in train_datas],
         method=args.method,
         initialize=False,
-        num_iters=args.N_train_iter)
+        num_iters=N_iter)
 
-    return q_train, train_elbos
+    return rslds, q_train, train_elbos
+
+
+def train_slds(rslds, train_datas, chunk_size=500):
+    # Initialize the model and variational posterior with training data
+    _init = cached(experiment_dir, "_init")(_initialize_slds)
+    rslds, q_train = _init(rslds, train_datas)
+
+    # Train in chunks so that we don't lose everything if job halts
+    train_elbos = []
+    for chunk, start in enumerate(np.arange(0, args.N_train_iter, chunk_size)):
+        _train = cached(experiment_dir, "_train_{}".format(chunk))(_train_slds_chunk)
+        this_chunk_size = min(chunk_size, args.N_train_iter - start)
+        rslds, q_train, chunk_elbos = _train(rslds, train_datas, this_chunk_size)
+        train_elbos.append(chunk_elbos)
+    train_elbos = np.concatenate(train_elbos)
+
+    return rslds, q_train, train_elbos
 
 
 def validate_slds(rslds, val_datas):
@@ -369,7 +389,7 @@ if __name__ == "__main__":
     slds = make_slds(N, M, tags)
 
     # Fit the model and evaluate it
-    q_train, train_elbos = cached(experiment_dir, "train")(train_slds)(slds, train_datas)
+    slds, q_train, train_elbos = cached(experiment_dir, "train")(train_slds)(slds, train_datas)
     q_val, val_elbos = cached(experiment_dir, "validate")(validate_slds)(slds, val_datas)
     q_full, full_elbos, xs, zs = cached(experiment_dir, "full")(full_slds)(slds, full_datas)
 
