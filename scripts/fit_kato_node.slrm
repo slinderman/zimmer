@@ -9,9 +9,14 @@
 #SBATCH --time=12:00:00          # The time the job will take to run.
 #SBATCH --exclusive
 #SBATCH -N 1 
-echo "Fit the Kato dataset with " $SLURM_ARRAY_TASK_ID " states and D = " $1 " dims"
+
+export MKL_NUM_THREADS=2
+export NUMEXPR_NUM_THREADS=2
+export OMP_NUM_THREADS=2
+
+echo "Fit the Kato dataset with states and D = " $1 " dims"
 source activate zimmer
 cd ~/zimmer
-python experiments/fit_slds.py kato $SLURM_ARRAY_TASK_ID $1 --results_dir=/rigel/dsi/users/swl2133/zimmer/results/kato/2018-11-08
+parallel --results logs python experiments/fit_slds.py kato {} $1 --results_dir=/rigel/dsi/users/swl2133/zimmer/results/kato/2018-11-20 --transitions=rbf ::: 2 4 6 8 10 12 14 16 18 20
  
 # End of script
