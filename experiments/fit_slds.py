@@ -195,11 +195,17 @@ def full_slds(rslds, full_datas):
     xs = q_full.mean
     zs = [rslds.most_likely_states(x, data['y'], tag=data['tag'])
           for x, data in zip(xs, full_datas)]
-    rslds.permute(find_permutation(
-        np.concatenate([data['z_true'] for data in full_datas]),
-        np.concatenate(zs)))
-    zs = [rslds.most_likely_states(x, data['y'], tag=data['tag'])
+
+    try:
+        rslds.permute(find_permutation(
+            np.concatenate([data['z_true'] for data in full_datas]),
+            np.concatenate(zs)))
+
+        zs = [rslds.most_likely_states(x, data['y'], tag=data['tag'])
           for x, data in zip(xs, full_datas)]
+
+    except:
+        pass
 
     return q_full, full_elbos, xs, zs
 
