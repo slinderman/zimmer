@@ -27,7 +27,7 @@ parser.add_argument('-o', '--results_dir', default='results',
 args = parser.parse_args()
 
 
-def _fit_factor_analysis(D, y_trains, m_trains, y_tests, m_tests):
+def fit_factor_analysis(D, y_trains, m_trains, y_tests, m_tests):
     fa, xs, lls = factor_analysis_with_imputation(D, y_trains, m_trains, num_iters=args.N_iter)
     
     # Evaluate heldout likelihood
@@ -62,9 +62,9 @@ if __name__ == "__main__":
         results = []
         for itr in range(num_repeats):
             print("D = ", D, " repeat = ", itr)
-            _fit = cached(args.results_dir, "fa_D{}_i{}".format(D, itr))
-                (partial(_fit_factor_analysis, D, train_ys + val_ys, train_ms + val_ms, test_ys, test_ms))
-            results.append(_fit())
+            fit = partial(fit_factor_analysis, D, train_ys + val_ys, train_ms + val_ms, test_ys, test_ms)
+            cached_fit = cached(args.results_dir, "fa_D{}_i{}".format(D, itr))(fit)
+            results.append(cached_fit())
         
         # Pick the iteration with the best heldout likelihood
         best_results = results[np.argmax([r[3] for r in results])]
