@@ -108,9 +108,9 @@ if __name__ == "__main__":
         all_hlls.append([r[3] for r in results])
 
     # Get the continuous latent states with the best dimension
-    D = Ds[np.argmax(hlls)]
-    print("Best D = ", D)
-    fa = fas[np.where(Ds == D)[0][0]]
+    best_D = Ds[np.argmax(hlls)]
+    print("Best D = ", best_D)
+    fa = fas[np.where(Ds == best_D)[0][0]]
 
     def get_xs(ys, ms):
         xs = []
@@ -141,7 +141,7 @@ if __name__ == "__main__":
     plt.savefig(os.path.join(args.results_dir, "train_ll.pdf"))
 
     # Plot the continuous latent states
-    plot_latent_states(D, full_xs, full_zs)
+    plot_latent_states(best_D, full_xs, full_zs)
 
     # Save the continuous states
     with open(os.path.join(args.results_dir, args.dataset + "_xs.pkl"), "wb") as f:
