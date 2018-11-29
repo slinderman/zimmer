@@ -1,6 +1,7 @@
 import os
 import pickle
 import argparse
+from functools import partial
 import numpy as np
 import matplotlib
 matplotlib.use("Agg")
