@@ -42,6 +42,32 @@ def fit_factor_analysis(D, y_trains, m_trains, y_tests, m_tests):
     
     return fa, xs, lls, hll
 
+def plot_latent_states(D, xs, z_trues, W=5):
+    plt.figure(figsize=(15, D * 3))
+    for w, (x, z) in enumerate(zip(xs, z_trues)):
+        for d in range(1, D):
+            if D > d:
+                ax = plt.subplot(D, W, (d-1) * W + w+1, aspect="auto")
+                zplt.plot_2d_continuous_states(x, z, xlims=(-lims[0], lims[0]), ylims=(-lims[d], lims[d]), inds=(0, d), ax=ax)
+                plt.ylabel("PC {}".format(d+1) if w == 0 else "")
+                plt.title("worm {}".format(w+1))
+
+    plt.suptitle("Continuous Latent States (Zimmer Labels)")
+    plt.tight_layout()
+    plt.savefig(os.path.join(args.results_dir, "xs_2d.pdf"))
+
+    plt.figure(figsize=(15, 5))
+    for w, (x, z) in enumerate(zip(xs, z_trues)):
+            ax = plt.subplot(1, W, w+1, projection="3d")
+            zplt.plot_3d_continuous_states(x, z, colors=zplt.default_colors, ax=ax)
+    #         ax.view_init(30, 180)
+    #         plt.ylabel("PC {}".format(d+1) if w == 0 else "")
+    #         plt.title("worm {}".format(w+1))
+
+    plt.suptitle("Continuous Latent States (Zimmer Labels)")
+    plt.tight_layout()
+    plt.savefig(os.path.join(args.results_dir, "xs_3d.pdf"))
+
 
 if __name__ == "__main__":
     # Load the preprocessed data
@@ -54,7 +80,10 @@ if __name__ == "__main__":
     val_ms = [d['m'] for d in val_datas]
     test_ys = [d['y'] for d in test_datas]
     test_ms = [d['m'] for d in test_datas]
-
+    full_ys = [d['y'] for d in full_datas]
+    full_ms = [d['m'] for d in full_datas]
+    full_zs = [d['z_true'] for d in full_datas]
+    
     fas = []
     llss = []
     hlls = []
@@ -78,20 +107,6 @@ if __name__ == "__main__":
         hlls.append(best_results[3])
         all_hlls.append([r[3] for r in results])
 
-    # Plot the likelihoods
-    plt.figure(figsize=(3, 2))
-    plt.plot(Ds, all_hlls, '-ko')
-    plt.xlabel("latent dimension")
-    plt.ylabel("heldout likelihood")
-    plt.savefig(os.path.join(args.results_dir, "test_ll.pdf"))
-
-    plt.figure(figsize=(3, 2))
-    for D, lls in zip(Ds, llss): 
-        plt.plot(np.arange(2, len(lls)), lls[2:], '-', label="D={}".format(D))
-    plt.xlabel("Iteration")
-    plt.legend()
-    plt.savefig(os.path.join(args.results_dir, "train_ll.pdf"))
-
     # Get the continuous latent states with the best dimension
     D = Ds[np.argmax(hlls)]
     print("Best D = ", D)
@@ -110,8 +125,27 @@ if __name__ == "__main__":
     train_xs = get_xs(train_ys, train_ms)
     val_xs = get_xs(val_ys, val_ms)
     test_xs = get_xs(test_ys, test_ms)
+    full_xs = get_xs(full_ys, full_ms)
 
+    # Plot the likelihoods
+    plt.figure(figsize=(3, 2))
+    plt.plot(Ds, all_hlls, '-ko')
+    plt.xlabel("latent dimension")
+    plt.ylabel("heldout likelihood")
+    plt.savefig(os.path.join(args.results_dir, "test_ll.pdf"))
+
+    plt.figure(figsize=(3, 2))
+    for D, lls in zip(Ds, llss): 
+        plt.plot(np.arange(2, len(lls)), lls[2:], '-', label="D={}".format(D))
+    plt.xlabel("Iteration")
+    plt.legend()
+    plt.savefig(os.path.join(args.results_dir, "train_ll.pdf"))
+
+    # Plot the continuous latent states
+    plot_latent_states(D, full_xs, full_zs)
+
+    # Save the continuous states
     with open(os.path.join(args.results_dir, args.dataset + "_xs.pkl"), "wb") as f:
-        pickle.dump((train_xs, val_xs, test_xs), f)
+        pickle.dump((train_xs, val_xs, test_xs, full_xs), f)
 
 
