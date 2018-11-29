@@ -3,7 +3,7 @@ import copy
 import pickle
 import numpy as np
 from zimmer.io import load_kato_data, load_nichols_data
-from ssm.preprocessing import trend_filter
+from ssm.preprocessing import trend_filter, pca_with_imputation
 
 np.random.seed(1234)
 data_dir = os.path.join("data", "processed")
@@ -37,6 +37,12 @@ def process_data(version="kato", chunk=250, train_frac=0.7, val_frac=0.15):
 
     # Trend filter the data
     ys = [trend_filter(y) for y in ys]
+
+    # Run PCA to get a 3d projection of the data
+    _pca = cached(results_dir, "pca")(pca_with_imputation)
+    pca, xs = pca_with_imputation(D, ys, ms)
+    xs = [x.copy('C') for x in xs]
+
     
     # Split into training and test data
     all_ys = []
