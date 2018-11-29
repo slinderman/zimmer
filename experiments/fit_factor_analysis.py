@@ -108,7 +108,7 @@ if __name__ == "__main__":
     val_xs = get_xs(val_ys, val_ms)
     test_xs = get_xs(test_ys, test_ms)
 
-    with open(os.path.join(args.results_dir, "xs.pkl"), "wb") as f:
+    with open(os.path.join(args.results_dir, args.dataset + "_xs.pkl"), "wb") as f:
         pickle.dump((train_xs, val_xs, test_xs), f)
 
 
