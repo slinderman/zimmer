@@ -121,7 +121,6 @@ if __name__ == "__main__":
             xs.append(states.Z.copy('C'))
         return xs
 
-    xs = get_xs(ys, ms)
     train_xs = get_xs(train_ys, train_ms)
     val_xs = get_xs(val_ys, val_ms)
     test_xs = get_xs(test_ys, test_ms)
