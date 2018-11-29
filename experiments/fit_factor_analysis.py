@@ -62,7 +62,7 @@ if __name__ == "__main__":
         results = []
         for itr in range(num_repeats):
             print("D = ", D, " repeat = ", itr)
-            _fit = cached(results_dir, "fa_D{}_i{}".format(D, itr))
+            _fit = cached(args.results_dir, "fa_D{}_i{}".format(D, itr))
                 (partial(_fit_factor_analysis, D, train_ys + val_ys, train_ms + val_ms, test_ys, test_ms))
             results.append(_fit())
         
