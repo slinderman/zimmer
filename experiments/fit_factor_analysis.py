@@ -7,6 +7,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from ssm.preprocessing import factor_analysis_with_imputation
+import zimmer.plotting as zplt
 from zimmer.util import cached
 
 np.random.seed(1234)
@@ -42,13 +43,13 @@ def fit_factor_analysis(D, y_trains, m_trains, y_tests, m_tests):
     
     return fa, xs, lls, hll
 
-def plot_latent_states(D, xs, z_trues, W=5):
+def plot_latent_states(D, xs, z_trues, W=5, lims=(-3,3)):
     plt.figure(figsize=(15, D * 3))
     for w, (x, z) in enumerate(zip(xs, z_trues)):
         for d in range(1, D):
             if D > d:
                 ax = plt.subplot(D, W, (d-1) * W + w+1, aspect="auto")
-                zplt.plot_2d_continuous_states(x, z, xlims=(-lims[0], lims[0]), ylims=(-lims[d], lims[d]), inds=(0, d), ax=ax)
+                zplt.plot_2d_continuous_states(x, z, xlims=lims, ylims=lims, inds=(0, d), ax=ax)
                 plt.ylabel("PC {}".format(d+1) if w == 0 else "")
                 plt.title("worm {}".format(w+1))
 
