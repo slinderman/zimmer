@@ -20,6 +20,8 @@ parser.add_argument('--D_max', type=int, default=10,
                     help='maximum dimension')
 parser.add_argument('--N_iter', type=int, default=50,
                     help='number of EM iterations')
+parser.add_argument('--N_repeats', type=int, default=3,
+                    help='number of EM iterations')
 parser.add_argument('-d', '--data_dir', default=os.path.join("data", "processed"),
                     help='where the processed data is stored')
 parser.add_argument('-o', '--results_dir', default='results',
@@ -60,7 +62,7 @@ if __name__ == "__main__":
     Ds = np.arange(args.D_min, args.D_max + 1)
     for D in Ds:
         results = []
-        for itr in range(num_repeats):
+        for itr in range(args.N_repeats):
             print("D = ", D, " repeat = ", itr)
             fit = partial(fit_factor_analysis, D, train_ys + val_ys, train_ms + val_ms, test_ys, test_ms)
             cached_fit = cached(args.results_dir, "fa_D{}_i{}".format(D, itr))(fit)
