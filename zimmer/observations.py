@@ -10,7 +10,7 @@ from autograd import grad
 
 from ssm.observations import _Observations
 from ssm.util import random_rotation, ensure_args_are_lists, ensure_args_not_none, \
-    logistic, logit, one_hot, generalized_newton_studentst_dof, fit_linear_regression
+    logistic, logit, one_hot, generalized_newton_studentst_dof
 from ssm.preprocessing import interpolate_data
 from ssm.cstats import robust_ar_statistics
 
