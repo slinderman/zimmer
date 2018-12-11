@@ -10,7 +10,7 @@ from autograd import grad
 
 from ssm.observations import _Observations
 from ssm.util import random_rotation, ensure_args_are_lists, ensure_args_not_none, \
-    logistic, logit, one_hot, generalized_newton_studentst_dof
+    logistic, logit, one_hot, generalized_newton_studentst_dof, fit_linear_regression
 from ssm.preprocessing import interpolate_data
 from ssm.cstats import robust_ar_statistics
 
@@ -337,10 +337,18 @@ class HierarchicalRobustAutoRegressiveObservations(_Observations):
             ts = npr.choice(T-self.lags, replace=False, size=(T-self.lags)//self.K)
             x = np.column_stack([data[ts + l] for l in range(self.lags)] + [input[ts]])
             y = data[ts+self.lags]
-            lr = LinearRegression().fit(x, y)
-            self.shared_As[k] = lr.coef_[:, :self.D * self.lags]
-            self.shared_Vs[k] = lr.coef_[:, self.D * self.lags:]
-            self.shared_bs[k] = lr.intercept_
+            try: 
+                lr = LinearRegression().fit(x, y)
+                self.shared_As[k] = lr.coef_[:, :self.D * self.lags]
+                self.shared_Vs[k] = lr.coef_[:, self.D * self.lags:]
+                self.shared_bs[k] = lr.intercept_
+            except:
+                # Sometimes the regression fails for some numerical stability issue
+                import pdb; pdb.set_trace()
+                A, b = fit_linear_regression(x, y)
+                self.shared_As[k] = A[:, :self.D * self.lags]
+                self.shared_Vs[k] = A[:, self.D * self.lags:]
+                self.shared_bs[k] = b
             
             for g in range(self.G):
                 self.As[g, k] = self.shared_As[k]
