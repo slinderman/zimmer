@@ -107,21 +107,26 @@ def initialize_arhmm(arhmm, train_datas):
     Initialize with a non-hierarchical model if possible
     """
     if args.hierarchical:
-        hmm_exp_name = "{}{}ARHMM_K{}eta{:.0e}".format(
+        import pdb; pdb.set_trace()
+        base_exp_name = "{}{}ARHMM_K{}eta{:.0e}".format(
             'r' if args.transitions == "recurrent" else 'rbf' if args.transitions == "rbf" else '',
             'b' if args.robust else '',
             args.K, args.eta
             )
-        print("Loading non-hierarchical model {} on {} data".format(experiment_name, args.dataset))
+        print("Loading non-hierarchical model {} on {} data".format(base_exp_name, args.dataset))
 
-        hmm_exp_dir = os.path.join(args.results_dir, hmm_exp_name)
-        if not os.path.exists(hmm_exp_dir):
+        base_exp_dir = os.path.join(args.results_dir, base_exp_name)
+        if not os.path.exists(base_exp_dir):
             raise Exception("Could not find non-hierarchical model for initialization.")
 
-        with open(os.path.join(hmm_exp_dir, "train.pkl"), "rb") as f:
-            hmm, _ = pickle.load(f)
+        with open(os.path.join(base_exp_dir, "train.pkl"), "rb") as f:
+            base, _ = pickle.load(f)
 
         # Initialize the hierarchical model with the regular model
+        arhmm.init_state_distn.params = copy.deepcopy(base.init_state_distn.params)
+        arhmm.transitions.initialize_from_standard(base.transitions)
+        arhmm.observations.initialize_from_standard(base.observations)
+
     else:
         # Initialize with the training data
         arhmm.initialize([data['x'] for data in train_datas],
