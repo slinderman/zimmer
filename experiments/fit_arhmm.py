@@ -163,8 +163,7 @@ def train_arhmm(arhmm, train_datas, chunk_size=500):
 def validate_arhmm(arhmm, val_datas):
     val_elbos = arhmm.log_likelihood(
         datas=[data['x'] for data in val_datas],
-        tags=[data['tag'] for data in val_datas],
-        num_iters=args.N_val_iter)
+        tags=[data['tag'] for data in val_datas])
 
     return q_val, val_elbos
 
@@ -172,8 +171,7 @@ def validate_arhmm(arhmm, val_datas):
 def full_arhmm(arhmm, full_datas):
     full_lls = arhmm.log_likelihood(
         datas=[data['x'] for data in full_datas],
-        tags=[data['tag'] for data in full_datas],
-        num_iters=args.N_full_iter)
+        tags=[data['tag'] for data in full_datas])
 
     # Find the most likely discrete states that are
     # best aligned with the Kato states
