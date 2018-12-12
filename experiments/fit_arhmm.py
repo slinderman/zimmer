@@ -51,7 +51,7 @@ parser.add_argument('--eta', type=float, default=1e-3,
                     help='variance of hierarchical prior')
 parser.add_argument('--method', default="em",
                     help='training method')
-parser.add_argument('--N_train_iter', type=int, default=1000,
+parser.add_argument('--N_train_iter', type=int, default=500,
                     help='number of training VI iterations')
 parser.add_argument('-d', '--data_dir', default=os.path.join("data", "processed"),
                     help='where the processed data is stored')
@@ -102,10 +102,30 @@ def make_arhmm(D, M, tags):
     return _HMM(K, D, M, initial_state, transitions, dynamics)
 
 
-def _initialize_arhmm(arhmm, train_datas):
-    # Initialize with the training data
-    arhmm.initialize([data['x'] for data in train_datas],
-                     tags=[data['tag'] for data in train_datas])
+def initialize_arhmm(arhmm, train_datas):
+    """
+    Initialize with a non-hierarchical model if possible
+    """
+    if args.hierarchical:
+        hmm_exp_name = "{}{}ARHMM_K{}eta{:.0e}".format(
+            'r' if args.transitions == "recurrent" else 'rbf' if args.transitions == "rbf" else '',
+            'b' if args.robust else '',
+            args.K, args.eta
+            )
+        print("Loading non-hierarchical model {} on {} data".format(experiment_name, args.dataset))
+
+        hmm_exp_dir = os.path.join(args.results_dir, hmm_exp_name)
+        if not os.path.exists(hmm_exp_dir):
+            raise Exception("Could not find non-hierarchical model for initialization.")
+
+        with open(os.path.join(hmm_exp_dir, "train.pkl"), "rb") as f:
+            hmm, _ = pickle.load(f)
+
+        # Initialize the hierarchical model with the regular model
+    else:
+        # Initialize with the training data
+        arhmm.initialize([data['x'] for data in train_datas],
+                         tags=[data['tag'] for data in train_datas])
 
     return arhmm
 
@@ -134,7 +154,7 @@ def train_arhmm(arhmm, train_datas, chunk_size=500):
 
         _train = cached(experiment_dir, "_train_{}".format(chunk))(_train_arhmm_chunk)
         arhmm, chunk_lls = _train(arhmm, train_datas, this_chunk_size)
-        train_lls.append(chunk_elbos)
+        train_lls.append(chunk_lls)
     train_lls = np.concatenate(train_lls)
 
     return arhmm, train_lls
