@@ -143,7 +143,7 @@ def _train_arhmm_chunk(arhmm, train_datas, N_iter):
 
 def train_arhmm(arhmm, train_datas, chunk_size=500):
     # Initialize the model and variational posterior with training data
-    _init = cached(experiment_dir, "_init")(_initialize_arhmm)
+    _init = cached(experiment_dir, "_init")(initialize_arhmm)
     arhmm = _init(arhmm, train_datas)
 
     # Train in chunks so that we don't lose everything if job halts
