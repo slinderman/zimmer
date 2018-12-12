@@ -234,9 +234,9 @@ def plot_latent_trajectories(figures_dir, xs, zs, lim=(-3, 3)):
     plt.savefig(os.path.join(figures_dir, "continuous_states.png"), dpi=300)
 
 
-def plot_discrete_states(K, zs, ztrues):
+def plot_discrete_states(figures_dir, zs, ztrues):
     zplt.plot_state_overlap(z_infs, z_trues)
-    plt.savefig(os.path.join(results_dir, "figures", "discrete_state_overlap.png"), dpi=300)
+    plt.savefig(os.path.join(figures_dir, "discrete_state_overlap.png"), dpi=300)
 
     # # Helper function to find overlap percentages
     # def compute_pct_overlap(zi, ztr):
@@ -405,4 +405,4 @@ if __name__ == "__main__":
     # Plot some basic results
     plot_elbos(experiment_dir, train_lls, val_lls, full_lls)
     plot_latent_trajectories(experiment_dir, xs, zs)
-    plot_discrete_states(K, zs, z_trues)
+    plot_discrete_states(experiment_dir, zs, [d['z_true'] for d in full_datas])
