@@ -726,7 +726,7 @@ def plot_latent_trajectories_vs_time(xs, zs,
         offset = 0
         for k, dur in zip(*z_rle):
             ax.fill_between([offset, offset + dur], [-D_latent, -D_latent], [0, 0],
-                            color=colors[k], alpha=alpha)
+                            color=colors[k % len(colors)], alpha=alpha)
             offset += dur
             if offset > plot_slice[1]:
                 break

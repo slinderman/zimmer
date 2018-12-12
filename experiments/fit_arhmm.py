@@ -165,7 +165,7 @@ def validate_arhmm(arhmm, val_datas):
         datas=[data['x'] for data in val_datas],
         tags=[data['tag'] for data in val_datas])
 
-    return q_val, val_elbos
+    return val_elbos
 
 
 def full_arhmm(arhmm, full_datas):
