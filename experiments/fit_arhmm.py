@@ -107,7 +107,6 @@ def initialize_arhmm(arhmm, train_datas):
     Initialize with a non-hierarchical model if possible
     """
     if args.hierarchical:
-        import pdb; pdb.set_trace()
         base_exp_name = "{}{}ARHMM_K{}eta{:.0e}".format(
             'r' if args.transitions == "recurrent" else 'rbf' if args.transitions == "rbf" else '',
             'b' if args.robust else '',
@@ -190,7 +189,6 @@ def full_arhmm(arhmm, full_datas):
 
         zs = [arhmm.most_likely_states(x, data['x'], tag=data['tag'])
               for data in full_datas]
-
     except:
         pass
 
@@ -407,3 +405,4 @@ if __name__ == "__main__":
     # Plot some basic results
     plot_elbos(experiment_dir, train_lls, val_lls, full_lls)
     plot_latent_trajectories(experiment_dir, xs, zs)
+    plot_discrete_states(K, zs, z_trues)
