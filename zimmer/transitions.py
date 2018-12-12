@@ -274,20 +274,13 @@ class HierarchicalRBFRecurrentTransitions(_Transitions):
         self._sqrt_Sigmas = np.repeat(self._shared_sqrt_Sigmas[None, ...], self.G, axis=0)
         
     def permute(self, perm):
-        """
-        Permute the discrete latent states.
-        """
-        self.log_Ps = self.log_Ps[np.ix_(perm, perm)]
-        self.mus = self.mus[perm]
-        self.sqrt_Sigmas = self.sqrt_Sigmas[perm]
-        self.Ws = self.Ws[perm]
-
-    def permute(self, perm):
-        self.shared_Ws = self.shared_Ws[perm]
+        self.shared_log_Ps = self.shared_log_Ps[np.ix_(perm, perm)]
         self.shared_mus = self.shared_mus[perm]
         self._shared_sqrt_Sigmas = self._shared_sqrt_Sigmas[perm]
+        self.shared_Ws = self.shared_Ws[perm]
 
         for g in range(self.G):
+            self.log_Ps[g] = self.log_Ps[g][np.ix_(perm, perm)]
             self.mus[g] = self.mus[g, perm]
             self._sqrt_Sigmas[g] = self._sqrt_Sigmas[g, perm]
             self.Ws[g] = self.Ws[g, perm]
@@ -295,13 +288,15 @@ class HierarchicalRBFRecurrentTransitions(_Transitions):
     def initialize_from_standard(self, tr):
         # Copy the transition parameters
         self.shared_log_Ps = tr.log_Ps.copy()
+        self.shared_mus = tr.mus.copy()
+        self._shared_sqrt_Sigmas = tr._sqrt_Sigmas.copy()
         self.shared_Ws = tr.Ws.copy()
-        self.shared_Rs = tr.Rs.copy()
 
         for g in range(self.G):
             self.log_Ps[g] = tr.log_Ps.copy()
+            self.mus[g] = tr.mus.copy()
+            self._sqrt_Sigmas[g] = tr._sqrt_Sigmas.copy()
             self.Ws[g] = tr.Ws.copy()
-            self.Rs[g] = tr.Rs.copy()
                         
     def log_prior(self):
         lp = 0
