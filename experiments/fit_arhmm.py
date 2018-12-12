@@ -107,7 +107,6 @@ def initialize_arhmm(arhmm, train_datas):
     Initialize with a non-hierarchical model if possible
     """
     if args.hierarchical:
-        import pdb; pdb.set_trace()
         base_exp_name = "{}{}ARHMM_K{}eta{:.0e}".format(
             'r' if args.transitions == "recurrent" else 'rbf' if args.transitions == "rbf" else '',
             'b' if args.robust else '',
