@@ -189,7 +189,6 @@ def full_arhmm(arhmm, full_datas):
 
         zs = [arhmm.most_likely_states(x, data['x'], tag=data['tag'])
               for data in full_datas]
-
     except:
         pass
 
@@ -406,3 +405,4 @@ if __name__ == "__main__":
     # Plot some basic results
     plot_elbos(experiment_dir, train_lls, val_lls, full_lls)
     plot_latent_trajectories(experiment_dir, xs, zs)
+    plot_discrete_states(K, zs, z_trues)
