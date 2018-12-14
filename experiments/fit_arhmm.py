@@ -235,7 +235,7 @@ def plot_latent_trajectories(figures_dir, xs, zs, lim=(-3, 3)):
 
 
 def plot_discrete_states(figures_dir, zs, ztrues):
-    zplt.plot_state_overlap(z_infs, z_trues)
+    zplt.plot_state_overlap(zs, ztrues)
     plt.savefig(os.path.join(figures_dir, "discrete_state_overlap.png"), dpi=300)
 
     # # Helper function to find overlap percentages
