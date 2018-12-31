@@ -76,6 +76,13 @@ class HierarchicalAutoRegressiveObservations(_Observations):
         input = np.concatenate(inputs)
         T = data.shape[0]
 
+        # Cluster the data and its gradient before initializing
+        from sklearn.cluster import KMeans
+        km = KMeans(self.K)
+        # km.fit(np.column_stack((data, ddata)))
+        km.fit(data)
+        z = km.labels_[:-self.lags]
+
         # Initialize with linear regressions
         from sklearn.linear_model import LinearRegression
         data = np.concatenate(datas) 
@@ -83,7 +90,8 @@ class HierarchicalAutoRegressiveObservations(_Observations):
         T = data.shape[0]
 
         for k in range(self.K):
-            ts = npr.choice(T-self.lags, replace=False, size=(T-self.lags)//self.K)
+            # ts = npr.choice(T-self.lags, replace=False, size=(T-self.lags)//self.K)
+            ts = np.where(z == k)[0]    
             x = np.column_stack([data[ts + l] for l in range(self.lags)] + [input[ts]])
             y = data[ts+self.lags]
             lr = LinearRegression().fit(x, y)
@@ -344,7 +352,6 @@ class HierarchicalRobustAutoRegressiveObservations(_Observations):
                 self.shared_bs[k] = lr.intercept_
             except:
                 # Sometimes the regression fails for some numerical stability issue
-                import pdb; pdb.set_trace()
                 A, b = fit_linear_regression(x, y)
                 self.shared_As[k] = A[:, :self.D * self.lags]
                 self.shared_Vs[k] = A[:, self.D * self.lags:]

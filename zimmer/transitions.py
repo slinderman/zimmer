@@ -10,7 +10,7 @@ from autograd import grad
 
 from ssm.transitions import _Transitions
 from ssm.util import random_rotation, ensure_args_are_lists, ensure_args_not_none, \
-    logistic, logit, one_hot, relu, batch_mahalanobis
+    logistic, logit, one_hot, relu, batch_mahalanobis, fit_multiclass_logistic_regression
 from ssm.preprocessing import interpolate_data
 
 
@@ -84,9 +84,9 @@ class HierarchicalRecurrentTransitions(_Transitions):
         self.kappa = kappa
 
         # Global recurrence parameters
-        self.shared_log_Ps = npr.randn(K, K)
+        self.shared_log_Ps = kappa * np.eye(K)
         self.shared_Ws = npr.randn(K, M)
-        self.shared_Rs = npr.randn(K, D)
+        self.shared_Rs = np.zeros((K, D))
         
         # Per-group parameters
         self.tags = tags
@@ -137,10 +137,11 @@ class HierarchicalRecurrentTransitions(_Transitions):
         lp = 0
         
         # Log prior on the shared transition matrix
-        shared_Ps = np.exp(self.shared_log_Ps - logsumexp(self.shared_log_Ps, axis=1, keepdims=True))
-        for k in range(self.K):
-            alpha = self.alpha * np.ones(self.K) + self.kappa * (np.arange(self.K) == k)
-            lp += dirichlet.logpdf(shared_Ps[k], alpha)
+        # shared_Ps = np.exp(self.shared_log_Ps - logsumexp(self.shared_log_Ps, axis=1, keepdims=True))
+        # for k in range(self.K):
+        #     alpha = self.alpha * np.ones(self.K) + self.kappa * (np.arange(self.K) == k)
+        #     lp += dirichlet.logpdf(shared_Ps[k], alpha)
+        lp += np.sum(norm.logpdf(self.shared_log_Ps, self.kappa * np.eye(self.K), 1/np.sqrt(self.alpha)))
 
         # Penalty on difference from shared matrix
         for g in range(self.G):
@@ -160,6 +161,46 @@ class HierarchicalRecurrentTransitions(_Transitions):
         # Past observations effect
         log_Ps = log_Ps + np.dot(data[:-1], self.Rs[g].T)[:, None, :]
         return log_Ps - logsumexp(log_Ps, axis=2, keepdims=True)
+
+    def m_step(self, expectations, datas, inputs, masks, tags, **kwargs):
+        G, K, M, D = self.G, self.K, self.M, self.D
+
+        # Update each group's parameters, then update the global parameters
+        for g in range(G):
+            Xs = []
+            ys = []
+            for tag, (Ez, _, _), data, input, in zip(tags, expectations, datas, inputs):
+                if tag == g:
+                    z = np.array([np.random.choice(K, p=p) for p in Ez])
+                    Xs.append(np.hstack((one_hot(z[:-1], K), input[1:], data[:-1])))
+                    ys.append(z[1:])
+                    
+            # Combine regressors and labels
+            X = np.vstack(Xs)
+            y = np.concatenate(ys)
+
+            # Fit the logistic regression
+            W0 = np.column_stack([self.log_Ps[g].T, self.Ws[g], self.Rs[g]])
+            mu0 = np.column_stack([self.shared_log_Ps.T, self.shared_Ws, self.shared_Rs])
+            coef_ = fit_multiclass_logistic_regression(X, y, K=K, W0=W0, mu0=mu0, sigmasq0=self.eta)
+
+            # Extract the coefficients
+            self.log_Ps[g] = coef_[:, :K].T
+            self.Ws[g] = coef_[:, K:K+M]
+            self.Rs[g] = coef_[:, K+M:]
+            
+        # Update the shared transition weights, incorporating sticky prior
+        J_prior = self.alpha                            # alpha is the precision
+        h_prior = self.alpha * self.kappa * np.eye(K)
+        J_lkhd  = 1/self.eta * self.G
+        h_lkhd  = np.sum(self.log_Ps, axis=0) / self.eta 
+        Sigma_post = 1 / (J_prior + J_lkhd)
+        mu_post = Sigma_post * (h_prior + h_lkhd)
+        self.shared_log_Ps = mu_post
+
+        # Update the input and recurrent weights (no prior here)
+        self.shared_Ws = np.mean(self.Ws, axis=0)
+        self.shared_Rs = np.mean(self.Rs, axis=0)
 
 
 class HierarchicalRecurrentOnlyTransitions(_Transitions):
@@ -221,6 +262,38 @@ class HierarchicalRecurrentOnlyTransitions(_Transitions):
         log_Ps = log_Ps + self.r[tag]                                       # bias
         log_Ps = np.tile(log_Ps, (1, self.K, 1))                            # expand
         return log_Ps - logsumexp(log_Ps, axis=2, keepdims=True)            # normalize
+
+    def m_step(self, expectations, datas, inputs, masks, tags, **kwargs):
+        G, K, M, D = self.G, self.K, self.M, self.D
+
+        # Update each group's parameters, then update the global parameters
+        for g in range(G):
+            zps, zns = [], []
+            for tag, (Ez, _, _) in zip(tags, expectations):
+                if tag == g:
+                    z = np.array([np.random.choice(K, p=p) for p in Ez])
+                    zps.append(z[:-1])
+                    zns.append(z[1:])
+
+            X = np.vstack([np.hstack((input[1:], data[:-1], np.ones(data.shape[0]-1))) 
+                           for zp, input, data, tag in zip(zps, inputs, datas, tags)
+                           if tag == g])
+            y = np.concatenate(zns)
+
+            # Fit the logistic regression
+            W0 = np.column_stack([self.Ws[g], self.Rs[g], self.r[g]])
+            mu0 = np.column_stack([self.shared_Ws, self.shared_Rs, self.shared_r])
+            coef_ = fit_multiclass_logistic_regression(X, y, K=K, W0=W0, mu0=mu0, sigmasq0=self.eta)
+
+            # Extract the coefficients
+            self.Ws[g] = coef_[:, :M]
+            self.Rs[g] = coef_[:, M:M+D]
+            self.r[g] = coef_[:, -1]
+            
+        # Update the shared parameters
+        self.shared_Ws = np.mean(self.Ws, axis=0)
+        self.shared_Rs = np.mean(self.Rs, axis=0)
+        self.shared_r = np.mean(self.r, axis=0)
 
 
 class HierarchicalRBFRecurrentTransitions(_Transitions):
@@ -525,17 +598,19 @@ class ElaborateGroupRecurrentTransitions(_Transitions):
     each individual to have its own transition matrix and recurrent weights.
     Each group, however, is forced to share the input weights.
     """
-    def __init__(self, K, D, tags=(None,), M=0, eta1=1e-4, eta2=1):
+    def __init__(self, K, D, tags=(None,), M=0, eta1=1e-4, eta2=1, alpha=1, kappa=0):
         super(ElaborateGroupRecurrentTransitions, self).__init__(K, D, M)
 
-        
-        # Global recurrence parameters
-        self.shared_log_Ps = npr.randn(K, K)
-        self.shared_Ws = npr.randn(K, M)
-        self.shared_Rs = npr.randn(K, D)
-        
+        # Hyperparameters
         self.eta1 = eta1
         self.eta2 = eta2
+        self.alpha = alpha
+        self.kappa = kappa
+
+        # Global recurrence parameters
+        self.shared_log_Ps = kappa * np.eye(K) + 1 / np.sqrt(alpha) * npr.randn(K, K)
+        self.shared_Ws = npr.randn(K, M)
+        self.shared_Rs = npr.randn(K, D)
 
         # Per-individual parameters
         self.tags = tags
@@ -597,6 +672,10 @@ class ElaborateGroupRecurrentTransitions(_Transitions):
                         
     def log_prior(self):
         lp = 0
+        # Log prior on the shared transition matrix
+        lp += np.sum(norm.logpdf(self.shared_log_Ps, self.kappa * np.eye(self.K), 1/np.sqrt(self.alpha)))
+
+        # Penalize differences from the global mean
         for t in range(self.T):
             lp += np.sum(norm.logpdf(self.log_Ps[t], self.shared_log_Ps, np.sqrt(self.eta1)))
             lp += np.sum(norm.logpdf(self.Rs[t], self.shared_Rs, np.sqrt(self.eta1)))
@@ -616,3 +695,91 @@ class ElaborateGroupRecurrentTransitions(_Transitions):
         log_Ps = log_Ps + np.dot(data[:-1], self.Rs[tind].T)[:, None, :]
         log_Ps = log_Ps + np.dot(input[1:], self.Ws[gind].T)[:, None, :]
         return log_Ps - logsumexp(log_Ps, axis=2, keepdims=True)
+
+    def m_step(self, expectations, datas, inputs, masks, tags, **kwargs):
+        """
+        Stochastic M-step. Sample discrete states and solve a multiclass
+        logistic regression for each set of weights.
+        """
+        self._m_step_per_tag(expectations, datas, inputs, masks, tags, **kwargs)
+        self._m_step_per_group(expectations, datas, inputs, masks, tags, **kwargs)
+        self._m_step_global(expectations, datas, inputs, masks, tags, **kwargs)
+
+    def _m_step_per_tag(self, expectations, datas, inputs, masks, tags, **kwargs):
+        T, G, K, M, D = self.T, self.G, self.K, self.M, self.D
+
+        # Update each tag's weights, holding group-level weights fixed
+        for t in range(T):
+            Xs = []
+            ys = []
+            biases = []
+            for tag, (Ez, _, _), data, input, in zip(tags, expectations, datas, inputs):
+                _, group = tag
+                tind = self.tags_to_indices[tag]
+                gind = self.groups_to_indices[group]
+
+                if tind == t:
+                    z = np.array([np.random.choice(K, p=p) for p in Ez])
+                    Xs.append(np.hstack((one_hot(z[:-1], K), data[:-1])))
+                    ys.append(z[1:])
+                    biases.append(np.dot(input[1:], self.Ws[gind].T))
+                    
+            # Combine regressors and labels
+            X = np.vstack(Xs)
+            y = np.concatenate(ys)
+            bias = np.vstack(biases)
+
+            # Fit the logistic regression
+            W0 = np.column_stack([self.log_Ps[t].T, self.Rs[t]])
+            mu0 = np.column_stack([self.shared_log_Ps.T, self.shared_Rs])
+            coef_ = fit_multiclass_logistic_regression(X, y, bias=bias, K=K, W0=W0, mu0=mu0, sigmasq0=self.eta1)
+
+            # Extract the coefficients
+            self.log_Ps[t] = coef_[:, :K].T
+            self.Rs[t] = coef_[:, K:]
+
+    def _m_step_per_group(self, expectations, datas, inputs, masks, tags, **kwargs):
+        T, G, K, M, D = self.T, self.G, self.K, self.M, self.D
+
+        if M == 0:
+            return
+
+        # Update each group's weights, holding per-tag weights fixed
+        for g in range(G):
+            Xs = []
+            ys = []
+            biases = []
+            for tag, (Ez, _, _), data, input, in zip(tags, expectations, datas, inputs):
+                _, group = tag
+                tind = self.tags_to_indices[tag]
+                gind = self.groups_to_indices[group]
+
+                if gind == g:
+                    z = np.array([np.random.choice(K, p=p) for p in Ez])
+                    Xs.append(input[1:])
+                    ys.append(z[1:])
+                    biases.append(np.dot(one_hot(z[:-1], K), self.log_Ps[tind].T) + 
+                                  np.dot(data[:-1], self.Rs[tind].T))
+                    
+            # Combine regressors and labels
+            X = np.vstack(Xs)
+            y = np.concatenate(ys)
+            bias = np.vstack(biases)
+
+            # Fit the logistic regression with different precision for each set of weights
+            W0 = self.Ws[g]
+            mu0 = self.shared_Ws
+            self.Ws[g] = fit_multiclass_logistic_regression(X, y, bias=bias, K=K, W0=W0, mu0=mu0, sigmasq0=self.eta2)
+
+    def _m_step_global(self, expectations, datas, inputs, masks, tags, **kwargs):
+        # Update the global weights. alpha is the precision.
+        J_prior = self.alpha                            
+        h_prior = self.alpha * self.kappa * np.eye(self.K)
+        J_lkhd  = 1/self.eta1 * self.T
+        h_lkhd  = np.sum(self.log_Ps, axis=0) / self.eta1
+        Sigma_post = 1 / (J_prior + J_lkhd)
+        self.shared_log_Ps = Sigma_post * (h_prior + h_lkhd)
+        
+        # Update the input and recurrent weights (no prior here)
+        self.shared_Ws = np.mean(self.Ws, axis=0)
+        self.shared_Rs = np.mean(self.Rs, axis=0)
