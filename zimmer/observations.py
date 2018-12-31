@@ -577,7 +577,7 @@ class HierarchicalRobustAutoRegressiveObservations(_Observations):
 
 class HierarchicalRobustAutoRegressiveObservationsNoInputs(_Observations):
     def __init__(self, K, D, tags=(None,), M=0, lags=1, eta=0.1):
-        super(HierarchicalRobustAutoRegressiveObservations, self).__init__(K, D, M)
+        super(HierarchicalRobustAutoRegressiveObservationsNoInputs, self).__init__(K, D, M)
         
         # Distribution over initial point
         self.mu_init = np.zeros(D)
