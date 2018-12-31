@@ -544,7 +544,7 @@ class HierarchicalRobustAutoRegressiveObservations(_Observations):
             self._m_step_shared(expectations, datas, inputs, masks, tags)
 
     def sample_x(self, z, xhist, input=None, tag=0, with_noise=True):
-        D, As, bs, sigmas = self.D, self.As, self.bs, np.exp(self.inv_sigmas)
+        D, As, bs, Vs, sigmas = self.D, self.As, self.bs, self.Vs, np.exp(self.inv_sigmas)
         if xhist.shape[0] < self.lags:
             sigma_init = np.exp(self.inv_sigma_init) if with_noise else 0
             return self.mu_init + np.sqrt(sigma_init) * npr.randn(D)
