@@ -725,7 +725,7 @@ class ElaborateGroupRecurrentTransitions(_Transitions):
                 return elbo
 
             # Normalize and negate for minimization
-            T = sum([data.shape[0] for data, tag in zip(datas, tags) if tag == t])
+            T = sum([data.shape[0] for data, tag in zip(datas, tags) if self.tags_to_indices[tag] == t])
             def _objective(params, itr):
                 log_Ps_t, Rs_t = params
                 self.log_Ps = np.concatenate((self.log_Ps[:t], log_Ps_t[None, ...], self.log_Ps[t+1:]), axis=0)
@@ -757,7 +757,7 @@ class ElaborateGroupRecurrentTransitions(_Transitions):
                 return elbo
 
             # Normalize and negate for minimization
-            T = sum([data.shape[0] for data, tag in zip(datas, tags) if tag == t])
+            T = sum([data.shape[0] for data, tag in zip(datas, tags) if self.groups_to_indices[tag[1]] == g])
             def _objective(Ws_g, itr):
                 self.Ws = np.concatenate((self.Ws[:g], Ws_g[None, ...], self.Ws[g+1:]), axis=0)
                 obj = _expected_log_joint(expectations)
