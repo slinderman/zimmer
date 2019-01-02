@@ -12,6 +12,7 @@ from ssm.transitions import _Transitions
 from ssm.util import random_rotation, ensure_args_are_lists, ensure_args_not_none, \
     logistic, logit, one_hot, relu, batch_mahalanobis, fit_multiclass_logistic_regression
 from ssm.preprocessing import interpolate_data
+from ssm.optimizers import bfgs
 
 
 class HierarchicalStationaryTransitions(_Transitions):
@@ -701,6 +702,7 @@ class ElaborateGroupRecurrentTransitions(_Transitions):
         Stochastic M-step. Sample discrete states and solve a multiclass
         logistic regression for each set of weights.
         """
+        import pdb; pdb.set_trace()
         self._m_step_per_tag(expectations, datas, inputs, masks, tags, **kwargs)
         self._m_step_per_group(expectations, datas, inputs, masks, tags, **kwargs)
         self._m_step_global(expectations, datas, inputs, masks, tags, **kwargs)
@@ -710,33 +712,29 @@ class ElaborateGroupRecurrentTransitions(_Transitions):
 
         # Update each tag's weights, holding group-level weights fixed
         for t in range(T):
-            Xs = []
-            ys = []
-            biases = []
-            for tag, (Ez, _, _), data, input, in zip(tags, expectations, datas, inputs):
-                _, group = tag
-                tind = self.tags_to_indices[tag]
-                gind = self.groups_to_indices[group]
-
-                if tind == t:
-                    z = np.array([np.random.choice(K, p=p) for p in Ez])
-                    Xs.append(np.hstack((one_hot(z[:-1], K), data[:-1])))
-                    ys.append(z[1:])
-                    biases.append(np.dot(input[1:], self.Ws[gind].T))
+            # Maximize the expected log joint
+            def _expected_log_joint(expectations):
+                elbo = self.log_prior()
+                for data, input, mask, tag, (expected_states, expected_joints, _) \
+                    in zip(datas, inputs, masks, tags, expectations):
                     
-            # Combine regressors and labels
-            X = np.vstack(Xs)
-            y = np.concatenate(ys)
-            bias = np.vstack(biases)
+                    if self.tags_to_indices[tag] == t:
+                        log_Ps = self.log_transition_matrices(data, input, mask, tag)
+                        elbo += np.sum(expected_joints * log_Ps)
 
-            # Fit the logistic regression
-            W0 = np.column_stack([self.log_Ps[t].T, self.Rs[t]])
-            mu0 = np.column_stack([self.shared_log_Ps.T, self.shared_Rs])
-            coef_ = fit_multiclass_logistic_regression(X, y, bias=bias, K=K, W0=W0, mu0=mu0, sigmasq0=self.eta1)
+                return elbo
 
-            # Extract the coefficients
-            self.log_Ps[t] = coef_[:, :K].T
-            self.Rs[t] = coef_[:, K:]
+            # Normalize and negate for minimization
+            T = sum([data.shape[0] for data, tag in zip(datas, tags) if tag == t])
+            def _objective(params, itr):
+                log_Ps_t, Rs_t = params
+                self.log_Ps = np.concatenate((self.log_Ps[:t], log_Ps_t[None, ...], self.log_Ps[t+1:]), axis=0)
+                self.Rs = np.concatenate((self.Rs[:t], Rs_t[None, ...], self.Rs[t+1:]), axis=0)
+                obj = _expected_log_joint(expectations)
+                return -obj / T
+
+            # Fit the parameters for this group
+            self.log_Ps[t], self.Rs[t] = bfgs(_objective, (self.log_Ps[t], self.Rs[t]))
 
     def _m_step_per_group(self, expectations, datas, inputs, masks, tags, **kwargs):
         T, G, K, M, D = self.T, self.G, self.K, self.M, self.D
@@ -746,30 +744,27 @@ class ElaborateGroupRecurrentTransitions(_Transitions):
 
         # Update each group's weights, holding per-tag weights fixed
         for g in range(G):
-            Xs = []
-            ys = []
-            biases = []
-            for tag, (Ez, _, _), data, input, in zip(tags, expectations, datas, inputs):
-                _, group = tag
-                tind = self.tags_to_indices[tag]
-                gind = self.groups_to_indices[group]
+            # Maximize the expected log joint
+            def _expected_log_joint(expectations):
+                elbo = self.log_prior()
+                for data, input, mask, tag, (expected_states, expected_joints, _) \
+                    in zip(datas, inputs, masks, tags, expectations):
+                    _, group = tag
+                    if self.groups_to_indices[group] == g:
+                        log_Ps = self.log_transition_matrices(data, input, mask, tag)
+                        elbo += np.sum(expected_joints * log_Ps)
 
-                if gind == g:
-                    z = np.array([np.random.choice(K, p=p) for p in Ez])
-                    Xs.append(input[1:])
-                    ys.append(z[1:])
-                    biases.append(np.dot(one_hot(z[:-1], K), self.log_Ps[tind].T) + 
-                                  np.dot(data[:-1], self.Rs[tind].T))
-                    
-            # Combine regressors and labels
-            X = np.vstack(Xs)
-            y = np.concatenate(ys)
-            bias = np.vstack(biases)
+                return elbo
+
+            # Normalize and negate for minimization
+            T = sum([data.shape[0] for data, tag in zip(datas, tags) if tag == t])
+            def _objective(Ws_g, itr):
+                self.Ws = np.concatenate((self.Ws[:g], Ws_g[None, ...], self.Ws[g+1:]), axis=0)
+                obj = _expected_log_joint(expectations)
+                return -obj / T
 
             # Fit the logistic regression with different precision for each set of weights
-            W0 = self.Ws[g]
-            mu0 = self.shared_Ws
-            self.Ws[g] = fit_multiclass_logistic_regression(X, y, bias=bias, K=K, W0=W0, mu0=mu0, sigmasq0=self.eta2)
+            self.Ws[g] = bfgs(_objective, self.Ws[g])
 
     def _m_step_global(self, expectations, datas, inputs, masks, tags, **kwargs):
         # Update the global weights. alpha is the precision.
