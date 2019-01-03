@@ -713,25 +713,30 @@ class ElaborateGroupRecurrentTransitions(_Transitions):
         # Update each tag's weights, holding group-level weights fixed
         for t in range(T):
             # Maximize the expected log joint
-            def _expected_log_joint(expectations):
+            def _expected_log_joint(params):
+                log_Pt, Rt = params
+
                 elbo = self.log_prior()
                 for data, input, mask, tag, (expected_states, expected_joints, _) \
                     in zip(datas, inputs, masks, tags, expectations):
                     
+                    T, D = data.shape
+                    _, group = tag
+                    tind = self.tags_to_indices[tag]
+                    gind = self.groups_to_indices[group]
+                    
                     if self.tags_to_indices[tag] == t:
-                        log_Ps = self.log_transition_matrices(data, input, mask, tag)
+                        log_Ps = np.tile(log_Pt[np.newaxis, :, :], (T-1, 1, 1)) 
+                        log_Ps = log_Ps + np.dot(data[:-1], Rt.T)[:, np.newaxis, :]
+                        log_Ps = log_Ps + np.dot(input[1:], self.Ws[gind].T)[:, np.newaxis, :]
+                        log_Ps = log_Ps - logsumexp(log_Ps, axis=2, keepdims=True)
                         elbo += np.sum(expected_joints * log_Ps)
 
                 return elbo
 
             # Normalize and negate for minimization
             T = sum([data.shape[0] for data, tag in zip(datas, tags) if self.tags_to_indices[tag] == t])
-            def _objective(params, itr):
-                log_Ps_t, Rs_t = params
-                self.log_Ps = np.concatenate((self.log_Ps[:t], log_Ps_t[None, ...], self.log_Ps[t+1:]), axis=0)
-                self.Rs = np.concatenate((self.Rs[:t], Rs_t[None, ...], self.Rs[t+1:]), axis=0)
-                obj = _expected_log_joint(expectations)
-                return -obj / T
+            _objective = lambda params, itr: -_expected_log_joint(params) / T
 
             # Fit the parameters for this group
             self.log_Ps[t], self.Rs[t] = bfgs(_objective, (self.log_Ps[t], self.Rs[t]))
@@ -745,23 +750,28 @@ class ElaborateGroupRecurrentTransitions(_Transitions):
         # Update each group's weights, holding per-tag weights fixed
         for g in range(G):
             # Maximize the expected log joint
-            def _expected_log_joint(expectations):
+            def _expected_log_joint(Wg):
                 elbo = self.log_prior()
                 for data, input, mask, tag, (expected_states, expected_joints, _) \
                     in zip(datas, inputs, masks, tags, expectations):
+
+                    T, D = data.shape
                     _, group = tag
+                    tind = self.tags_to_indices[tag]
+                    gind = self.groups_to_indices[group]
+
                     if self.groups_to_indices[group] == g:
-                        log_Ps = self.log_transition_matrices(data, input, mask, tag)
+                        log_Ps = np.tile(self.log_Ps[tind][np.newaxis, :, :], (T-1, 1, 1)) 
+                        log_Ps = log_Ps + np.dot(data[:-1], self.Rs[tind].T)[:, np.newaxis, :]
+                        log_Ps = log_Ps + np.dot(input[1:], Wg.T)[:, np.newaxis, :]
+                        log_Ps = log_Ps - logsumexp(log_Ps, axis=2, keepdims=True)
                         elbo += np.sum(expected_joints * log_Ps)
 
                 return elbo
 
             # Normalize and negate for minimization
             T = sum([data.shape[0] for data, tag in zip(datas, tags) if self.groups_to_indices[tag[1]] == g])
-            def _objective(Ws_g, itr):
-                self.Ws = np.concatenate((self.Ws[:g], Ws_g[None, ...], self.Ws[g+1:]), axis=0)
-                obj = _expected_log_joint(expectations)
-                return -obj / T
+            _objective = lambda Wg, itr: -_expected_log_joint(Wg) / T
 
             # Fit the logistic regression with different precision for each set of weights
             self.Ws[g] = bfgs(_objective, self.Ws[g])
