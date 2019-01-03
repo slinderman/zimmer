@@ -726,7 +726,8 @@ class ElaborateGroupRecurrentTransitions(_Transitions):
                     gind = self.groups_to_indices[group]
                     
                     if self.tags_to_indices[tag] == t:
-                        log_Ps = np.tile(log_Pt[np.newaxis, :, :], (T-1, 1, 1)) 
+                        # log_Ps = np.tile(log_Pt[np.newaxis, :, :], (T-1, 1, 1)) 
+                        log_Ps = log_Pt[np.newaxis, :, :]
                         log_Ps = log_Ps + np.dot(data[:-1], Rt.T)[:, np.newaxis, :]
                         log_Ps = log_Ps + np.dot(input[1:], self.Ws[gind].T)[:, np.newaxis, :]
                         log_Ps = log_Ps - logsumexp(log_Ps, axis=2, keepdims=True)
@@ -761,7 +762,7 @@ class ElaborateGroupRecurrentTransitions(_Transitions):
                     gind = self.groups_to_indices[group]
 
                     if self.groups_to_indices[group] == g:
-                        log_Ps = np.tile(self.log_Ps[tind][np.newaxis, :, :], (T-1, 1, 1)) 
+                        log_Ps = self.log_Ps[tind][np.newaxis, :, :]
                         log_Ps = log_Ps + np.dot(data[:-1], self.Rs[tind].T)[:, np.newaxis, :]
                         log_Ps = log_Ps + np.dot(input[1:], Wg.T)[:, np.newaxis, :]
                         log_Ps = log_Ps - logsumexp(log_Ps, axis=2, keepdims=True)
