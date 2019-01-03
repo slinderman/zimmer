@@ -716,7 +716,9 @@ class ElaborateGroupRecurrentTransitions(_Transitions):
             def _expected_log_joint(params):
                 log_Pt, Rt = params
 
-                elbo = self.log_prior()
+                elbo = np.sum(norm.logpdf(log_Pt, self.shared_log_Ps, np.sqrt(self.eta1)))
+                elbo += np.sum(norm.logpdf(Rt, self.shared_Rs, np.sqrt(self.eta1)))
+
                 for data, input, mask, tag, (expected_states, expected_joints, _) \
                     in zip(datas, inputs, masks, tags, expectations):
                     
@@ -752,7 +754,7 @@ class ElaborateGroupRecurrentTransitions(_Transitions):
         for g in range(G):
             # Maximize the expected log joint
             def _expected_log_joint(Wg):
-                elbo = self.log_prior()
+                elbo = np.sum(norm.logpdf(Wg, self.shared_Ws, np.sqrt(self.eta2)))
                 for data, input, mask, tag, (expected_states, expected_joints, _) \
                     in zip(datas, inputs, masks, tags, expectations):
 
